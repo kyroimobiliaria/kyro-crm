@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM Imobiliário — Kyro (Supabase)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Cliente Supabase (via CDN, sem build) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <!-- ===================== TELA DE LOGIN ===================== -->
+  <div id="auth" class="auth-wrap">
+    <div class="auth-card">
+      <div class="logo" style="justify-content:center;margin-bottom:18px;">🏠 CRM <span>Kyro</span></div>
+      <input id="auth-email" type="email" placeholder="E-mail" />
+      <input id="auth-senha" type="password" placeholder="Senha (mín. 6 caracteres)" />
+      <button id="auth-entrar" class="btn-primary" style="width:100%">Entrar</button>
+      <button id="auth-cadastrar" class="btn-ghost" style="width:100%">Criar conta</button>
+      <p id="auth-msg" class="auth-msg"></p>
+      <p class="auth-hint" id="auth-hint"></p>
+    </div>
+  </div>
+
+  <!-- ===================== APLICATIVO ===================== -->
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="logo">🏠 CRM <span>Kyro</span></div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="leads">Leads</button>
+        <button class="tab" data-tab="imoveis">Imóveis</button>
+        <button class="tab" data-tab="dashboard">Dashboard</button>
+      </nav>
+      <div id="user-box" class="user-box">
+        <span id="user-email"></span>
+        <button id="logout" class="btn-ghost" style="padding:6px 12px">Sair</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- ===== LEADS ===== -->
+      <section id="leads" class="view active">
+        <div class="grid-2">
+          <div class="card">
+            <h2 id="lead-form-title">Novo Lead</h2>
+            <form id="lead-form">
+              <input type="hidden" id="lead-id" />
+              <label>Nome *<input id="lead-nome" required /></label>
+              <label>Telefone *<input id="lead-telefone" required placeholder="(62) 99999-0000" /></label>
+              <label>E-mail<input id="lead-email" type="email" /></label>
+              <label>Tipo
+                <select id="lead-tipo">
+                  <option value="Comprador">Comprador</option>
+                  <option value="Vendedor">Vendedor</option>
+                  <option value="Locador">Locador</option>
+                  <option value="Locatário">Locatário</option>
+                </select>
+              </label>
+              <label>Interesse (tipo de imóvel)<input id="lead-interesse" placeholder="Casa, apto, terreno..." /></label>
+              <label>Bairro/Local<input id="lead-bairro" /></label>
+              <label>Status
+                <select id="lead-status">
+                  <option value="Novo">Novo</option>
+                  <option value="Em negociação">Em negociação</option>
+                  <option value="Fechado">Fechado</option>
+                  <option value="Perdido">Perdido</option>
+                </select>
+              </label>
+              <label>Observações<textarea id="lead-obs" rows="3"></textarea></label>
+              <div class="actions">
+                <button type="submit" class="btn-primary">Salvar</button>
+                <button type="button" id="lead-cancel" class="btn-ghost" hidden>Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="list-head">
+              <h2>Leads cadastrados</h2>
+              <input id="lead-busca" placeholder="🔎 buscar nome, telefone, bairro..." />
+            </div>
+            <div class="table-wrap">
+              <table id="lead-tabela">
+                <thead>
+                  <tr><th>Nome</th><th>Telefone</th><th>Tipo</th><th>Interesse</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p id="lead-vazio" class="vazio">Nenhum lead cadastrado ainda.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== IMÓVEIS ===== -->
+      <section id="imoveis" class="view">
+        <div class="grid-2">
+          <div class="card">
+            <h2 id="imovel-form-title">Novo Imóvel</h2>
+            <form id="imovel-form">
+              <input type="hidden" id="imovel-id" />
+              <label>Título *<input id="imovel-titulo" required placeholder="Apto 2 quartos centro" /></label>
+              <label>Tipo
+                <select id="imovel-tipo">
+                  <option value="Casa">Casa</option>
+                  <option value="Apartamento">Apartamento</option>
+                  <option value="Terreno">Terreno</option>
+                  <option value="Comercial">Comercial</option>
+                </select>
+              </label>
+              <label>Bairro *<input id="imovel-bairro" required /></label>
+              <label>Valor (R$)<input id="imovel-valor" type="number" min="0" step="1000" /></label>
+              <label>Status
+                <select id="imovel-status">
+                  <option value="Disponível">Disponível</option>
+                  <option value="Reservado">Reservado</option>
+                  <option value="Vendido">Vendido</option>
+                  <option value="Alugado">Alugado</option>
+                </select>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn-primary">Salvar</button>
+                <button type="button" id="imovel-cancel" class="btn-ghost" hidden>Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="list-head">
+              <h2>Imóveis cadastrados</h2>
+              <input id="imovel-busca" placeholder="🔎 buscar título, bairro..." />
+            </div>
+            <div class="table-wrap">
+              <table id="imovel-tabela">
+                <thead>
+                  <tr><th>Título</th><th>Tipo</th><th>Bairro</th><th>Valor</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p id="imovel-vazio" class="vazio">Nenhum imóvel cadastrado ainda.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== DASHBOARD ===== -->
+      <section id="dashboard" class="view">
+        <div class="stats" id="stats"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app-supabase.js"></script>
+</body>
+</html>
