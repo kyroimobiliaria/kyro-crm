@@ -293,25 +293,31 @@ async function ajustarAtividade(ev, categoria, dataStr, delta) {
   if (reg) ({ error } = await sb.from('atividades').update({ quantidade: novo }).eq('id', reg.id));
   else if (novo > 0) ({ error } = await sb.from('atividades').insert({ corretor_id: isDemo() ? null : UID, categoria, data: dataStr, quantidade: novo }));
   if (error) return toast(error.message);
+
+  // espelha em eventos, preservando o historico individual (Beefreedom)
+  if (!isDemo()) {
+    if (delta > 0) {
+      await sb.from('eventos').insert({
+        tipo: categoria,
+        corretor_id: UID,
+        created_at: new Date(dataStr + 'T12:00:00').toISOString(),
+      });
+    } else {
+      const { data: ultimo } = await sb.from('eventos')
+        .select('id')
+        .eq('tipo', categoria)
+        .eq('corretor_id', UID)
+        .gte('created_at', dataStr + 'T00:00:00')
+        .lte('created_at', dataStr + 'T23:59:59')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (ultimo && ultimo[0]) await sb.from('eventos').delete().eq('id', ultimo[0].id);
+    }
+  }
+
   await carregarAtividades();
   renderAcomp();
 }
-
-function renderFunilSemana(dias) {
-  const ds = dias.map(ymd);
-  const soma = (cat) => db.atividades.filter((a) => a.categoria === cat && ds.includes(a.data)).reduce((s, a) => s + a.quantidade, 0);
-  const contatos = soma('ligacao') + soma('conversa') + soma('resposta_anuncio') + soma('outro');
-  const estagios = [
-    ['Contatos (total)', contatos],
-    ['Interessados', soma('interessado')],
-    ['Agendamentos', soma('agendamento')],
-    ['Visitas', soma('visita')],
-    ['Vendas', soma('venda')],
-  ];
-  const max = Math.max(1, ...estagios.map((e) => e[1]));
-  document.getElementById('acomp-funil').innerHTML = estagios.map(([lab, val]) => bar(lab, val, max)).join('');
-}
-
 // ============================ DETALHE DO LEAD (MODAL) ============================
 function openLeadDetail(id) {
   const l = db.leads.find((x) => x.id === id); if (!l) return;
