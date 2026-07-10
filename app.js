@@ -166,71 +166,49 @@ leadForm.addEventListener('submit', async (e) => {
     agendamento: v('lead-agendamento') ? new Date(v('lead-agendamento')).toISOString() : null,
     agendamento_obs: v('lead-agendamento-obs').trim(),
   };
+
   if (id) {
+    const leadAntigo = db.leads.find((l) => l.id === id);
+    const statusAntigo = leadAntigo ? leadAntigo.status : null;
+
     const { error } = await sb.from('leads').update(payload).eq('id', id);
     if (error) return toast(error.message);
+
+    if (!isDemo() && statusAntigo && statusAntigo !== payload.status) {
+      await sb.from('eventos').insert({
+        tipo: 'mudanca_status',
+        corretor_id: UID,
+        lead_id: id,
+        status_anterior: statusAntigo,
+        status_novo: payload.status,
+      });
+      if (payload.status === 'Fechado') {
+        await sb.from('eventos').insert({
+          tipo: 'venda',
+          corretor_id: UID,
+          lead_id: id,
+          valor_negociado: payload.valor_imovel,
+        });
+      }
+    }
   } else {
     if (!isDemo()) payload.corretor_id = UID;
-    const { error } = await sb.from('leads').insert(payload);
+    const { data: novoLead, error } = await sb.from('leads').insert(payload).select().single();
     if (error) return toast(error.message);
+
+    if (!isDemo() && novoLead) {
+      await sb.from('eventos').insert({
+        tipo: 'lead_criado',
+        corretor_id: UID,
+        lead_id: novoLead.id,
+      });
+    }
   }
+
   resetLeadForm();
   await carregarLeads();
   renderLeads();
 });
-document.getElementById('lead-cancel').addEventListener('click', resetLeadForm);
-document.getElementById('lead-busca').addEventListener('input', renderLeads);
-
-function resetLeadForm() {
-  leadForm.reset();
-  vset('lead-id', '');
-  document.getElementById('lead-form-title').textContent = 'Novo Lead';
-  document.getElementById('lead-cancel').hidden = true;
-}
-function editarLead(id) {
-  const l = db.leads.find((x) => x.id === id); if (!l) return;
-  vset('lead-id', l.id);
-  vset('lead-nome', l.nome); vset('lead-telefone', l.telefone || ''); vset('lead-email', l.email || '');
-  vset('lead-tipo', l.tipo || 'Comprador'); vset('lead-nicho', l.nicho || 'Revenda');
-  vset('lead-temperatura', l.temperatura || 'morno'); vset('lead-valor', l.valor_imovel || 0);
-  vset('lead-status', l.status || 'Novo'); vset('lead-bairro', l.bairro || '');
-  vset('lead-etiquetas', l.etiquetas || ''); vset('lead-anotacoes', l.anotacoes || '');
-  vset('lead-agendamento', l.agendamento ? l.agendamento.slice(0, 16) : '');
-  vset('lead-agendamento-obs', l.agendamento_obs || '');
-  document.getElementById('lead-form-title').textContent = 'Editar Lead';
-  document.getElementById('lead-cancel').hidden = false;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-async function excluirLead(id) {
-  if (!confirm('Excluir este lead?')) return;
-  const { error } = await sb.from('leads').delete().eq('id', id);
-  if (error) return toast(error.message);
-  await carregarLeads(); renderLeads();
-}
-function waLead(id) {
-  const l = db.leads.find((x) => x.id === id); if (!l) return;
-  const url = waLink(l.telefone, l.nome);
-  if (url === '#') return toast('Lead sem telefone.');
-  window.open(url, '_blank');
-}
-function renderLeads() {
-  const t = v('lead-busca').toLowerCase();
-  const f = db.leads.filter((l) => [l.nome, l.telefone, l.nicho, l.bairro, l.etiquetas].join(' ').toLowerCase().includes(t));
-  document.querySelector('#lead-tabela tbody').innerHTML = f.map((l) => `
-    <tr>
-      <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span><div class="muted" style="font-size:11px">${esc(l.etiquetas || '')}</div></td>
-      <td><span class="tag t-${l.temperatura}">${tempLabel(l.temperatura)}</span></td>
-      <td>${esc(l.nicho || '—')}</td>
-      <td>${esc(l.status || 'Novo')}</td>
-      <td><div class="row-actions">
-        <button class="icon-btn wa" onclick="waLead('${l.id}')">WhatsApp</button>
-        <button class="icon-btn edit" onclick="editarLead('${l.id}')">Editar</button>
-        <button class="icon-btn del" onclick="excluirLead('${l.id}')">Excluir</button>
-      </div></td>
-    </tr>`).join('');
-  document.getElementById('lead-vazio').style.display = f.length ? 'none' : 'block';
-}
-
 // ============================ AGENDA ============================
 function renderAgenda() {
   const agora = new Date();
