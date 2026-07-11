@@ -15,7 +15,10 @@ let UID = null;    // id do usuário (ou 'demo' no modo demo)
 const isDemo = () => CONFIG.DEMO_MODE;
 
 // caches
-const db = { leads: [], imoveis: [], atividades: [], corretores: [] };
+const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [] };
+
+// controla se o Acomp está mostrando a semana ou o mês
+let acompModoMensal = false;
 
 // categorias da planilha de produtividade (Acomp)
 const ATIV_CATS = [
@@ -294,8 +297,55 @@ function renderAgenda() {
   document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
 }
 
-// ============================ ACOMP (PRODUTIVIDADE DIÁRIA) ============================
+// ============================ ACOMP (PRODUTIVIDADE DIÁRIA / MENSAL) ============================
 function renderAcomp() {
+  garantirUIAcompMensal();
+
+  const tabelaSemanal = document.getElementById('acomp-tabela');
+  const tabelaMensal = document.getElementById('acomp-tabela-mensal');
+
+  if (acompModoMensal) {
+    tabelaSemanal.style.display = 'none';
+    tabelaMensal.style.display = '';
+    renderAcompMensalConteudo();
+  } else {
+    tabelaSemanal.style.display = '';
+    tabelaMensal.style.display = 'none';
+    renderAcompSemanalConteudo();
+  }
+}
+
+// cria o botão de alternância e a tabela mensal uma única vez, sem duplicar
+function garantirUIAcompMensal() {
+  if (document.getElementById('acomp-toggle-btn')) return;
+  const tabelaSemanal = document.getElementById('acomp-tabela');
+  if (!tabelaSemanal) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'acomp-toggle-btn';
+  btn.className = 'btn-ghost';
+  btn.style.marginBottom = '12px';
+  btn.textContent = 'Ver mês atual';
+  btn.addEventListener('click', async () => {
+    acompModoMensal = !acompModoMensal;
+    btn.textContent = acompModoMensal ? 'Voltar pra semana' : 'Ver mês atual';
+    if (acompModoMensal) await carregarAtividadesMes();
+    renderAcomp();
+  });
+  tabelaSemanal.parentElement.insertBefore(btn, tabelaSemanal);
+
+  const tabelaMensal = document.createElement('table');
+  tabelaMensal.id = 'acomp-tabela-mensal';
+  tabelaMensal.className = tabelaSemanal.className;
+  tabelaMensal.style.display = 'none';
+  tabelaMensal.innerHTML = `
+    <thead><tr><th>Atividade</th><th style="text-align:center">Total do mês</th></tr></thead>
+    <tbody></tbody>
+  `;
+  tabelaSemanal.parentElement.insertBefore(tabelaMensal, tabelaSemanal.nextSibling);
+}
+
+function renderAcompSemanalConteudo() {
   const dias = getWeekDays();
   document.querySelector('#acomp-tabela tbody').innerHTML = ATIV_CATS.map((cat) => {
     let total = 0;
@@ -313,6 +363,25 @@ function renderAcomp() {
     return `<tr><td>${cat.label}</td>${cels}<td style="text-align:center;font-weight:700;color:var(--gold)">${total}</td></tr>`;
   }).join('');
   renderFunilSemana(dias);
+}
+
+async function carregarAtividadesMes() {
+  const agora = new Date();
+  const primeiroDia = ymd(new Date(agora.getFullYear(), agora.getMonth(), 1));
+  let q = sb.from('atividades').select('*').gte('data', primeiroDia);
+  if (ME && ME.role === 'corretor' && !isDemo()) q = q.eq('corretor_id', UID);
+  const { data, error } = await q;
+  if (error) { toast(error.message); db.atividadesMes = []; return; }
+  db.atividadesMes = data || [];
+}
+
+function renderAcompMensalConteudo() {
+  document.querySelector('#acomp-tabela-mensal tbody').innerHTML = ATIV_CATS.map((cat) => {
+    const total = (db.atividadesMes || [])
+      .filter((a) => a.categoria === cat.key)
+      .reduce((s, a) => s + a.quantidade, 0);
+    return `<tr><td>${cat.label}</td><td style="text-align:center;font-weight:700;color:var(--gold)">${total}</td></tr>`;
+  }).join('');
 }
 
 async function ajustarAtividade(ev, categoria, dataStr, delta) {
