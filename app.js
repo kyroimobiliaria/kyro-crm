@@ -260,7 +260,7 @@ function renderLeads() {
         <button class="icon-btn del" onclick="excluirLead('${l.id}')">Excluir</button>
       </div></td>
     </tr>`).join('');
-  document.getElementById('lead-vazio').style.display = f.length ? 'none' : 'block';
+  document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
 }
 // ============================ AGENDA ============================
 function renderAgenda() {
