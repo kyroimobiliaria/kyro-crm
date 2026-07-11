@@ -208,7 +208,8 @@ leadForm.addEventListener('submit', async (e) => {
   resetLeadForm();
   await carregarLeads();
   renderLeads();
-});document.getElementById('lead-cancel').addEventListener('click', resetLeadForm);
+});
+document.getElementById('lead-cancel').addEventListener('click', resetLeadForm);
 document.getElementById('lead-busca').addEventListener('input', renderLeads);
 
 function resetLeadForm() {
