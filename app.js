@@ -260,7 +260,7 @@ function renderLeads() {
         <button class="icon-btn del" onclick="excluirLead('${l.id}')">Excluir</button>
       </div></td>
     </tr>`).join('');
-  document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
+  document.getElementById('lead-vazio').style.display = f.length ? 'none' : 'block';
 }
 // ============================ AGENDA ============================
 function renderAgenda() {
@@ -291,8 +291,7 @@ function renderAgenda() {
         <button class="icon-btn edit" onclick="editarLead('${l.id}')">Reagendar</button>
       </div></td>
     </tr>`).join('');
-  document.getElementById('a
-                          genda-vazio').style.display = ags.length ? 'none' : 'block';
+  document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
 }
 
 // ============================ ACOMP (PRODUTIVIDADE DIÁRIA) ============================
