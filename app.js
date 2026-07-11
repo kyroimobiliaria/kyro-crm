@@ -231,7 +231,7 @@ function renderAgenda() {
     <tr>
       <td>${esc(fmtDateTime(l.agendamento))}</td>
       <td>${esc(l.nome)}</td>
-      <td>${l.telefone ? `<a class="icon-btn wa" href="${waLink(l.telefone, l.nome)}" target="_blank">${esc(l.telefone)}</a>` : '—'}</td>
+      <td>${l.telefone ? `${esc(l.telefone)} <a class="icon-btn wa" href="${waLink(l.telefone, l.nome)}" target="_blank">WhatsApp</a>` : '—'}</td>
       <td>${esc(l.agendamento_obs || '')}</td>
       <td><div class="row-actions">
         <button class="icon-btn wa" onclick="waLead('${l.id}')">Ligar</button>
