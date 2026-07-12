@@ -188,11 +188,44 @@
                   </select>
                 </label>
               </div>
-              <label>Foto do imóvel
-                <input type="file" id="imovel-foto" accept="image/*" />
-                <img id="imovel-foto-preview" class="foto-preview hidden" alt="prévia" />
-                <input type="hidden" id="imovel-foto-url" />
+
+              <label>Descrição<textarea id="imovel-descricao" rows="3" placeholder="Descreva o imóvel: metragem, características, diferenciais..."></textarea></label>
+
+              <div class="row">
+                <label>Aceita permuta?
+                  <select id="imovel-permuta">
+                    <option value="nao" selected>Não</option>
+                    <option value="sim">Sim</option>
+                  </select>
+                </label>
+                <label id="imovel-permuta-desc-wrap">Descrição da permuta<input id="imovel-permuta-descricao" placeholder="ex: aceita carro, terreno..." /></label>
+              </div>
+
+              <div class="row">
+                <label>Captação
+                  <select id="imovel-captacao-tipo">
+                    <option value="exclusiva" selected>Exclusiva (Kyro)</option>
+                    <option value="construtora">Construtora</option>
+                    <option value="parceria">Parceria (outra imobiliária)</option>
+                  </select>
+                </label>
+                <label id="imovel-captacao-contato-wrap" style="display:none">Telefone do contato<input id="imovel-captacao-contato" placeholder="(62) 99999-0000" /></label>
+              </div>
+              <label id="imovel-captador-wrap">Corretor que captou
+                <select id="imovel-corretor-captador"></select>
               </label>
+
+              <label>Planta do imóvel (opcional)
+                <input type="file" id="imovel-planta" accept="image/*" />
+                <img id="imovel-planta-preview" class="foto-preview hidden" alt="prévia da planta" />
+                <input type="hidden" id="imovel-planta-url" />
+              </label>
+
+              <label>Fotos do imóvel (recomendado no mínimo 5, a primeira enviada vira a capa)
+                <input type="file" id="imovel-fotos" accept="image/*" multiple />
+              </label>
+              <div id="imovel-fotos-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+
               <div class="actions">
                 <button type="submit" class="btn-gold">Salvar</button>
                 <button type="button" id="imovel-cancel" class="btn-ghost" hidden>Cancelar</button>
@@ -202,7 +235,8 @@
           <div class="card">
             <div class="list-head">
               <h2>Consulta de imóveis</h2>
-              <div style="display:flex;gap:8px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input id="imovel-filtro-busca" placeholder="🔎 título ou bairro..." />
                 <select id="imovel-filtro">
                   <option value="">Todos os tipos</option>
                   <option value="Revenda">Revenda</option>
@@ -213,12 +247,23 @@
                   <option value="Lote de rua">Lote de rua</option>
                   <option value="Apartamento">Apartamento</option>
                 </select>
+                <select id="imovel-filtro-captacao">
+                  <option value="">Toda captação</option>
+                  <option value="exclusiva">Exclusiva</option>
+                  <option value="construtora">Construtora</option>
+                  <option value="parceria">Parceria</option>
+                </select>
+                <select id="imovel-filtro-permuta">
+                  <option value="">Permuta: todos</option>
+                  <option value="sim">Aceita permuta</option>
+                  <option value="nao">Não aceita</option>
+                </select>
                 <button id="export-imoveis" class="btn-ghost">⬇ CSV</button>
               </div>
             </div>
             <div class="table-wrap">
               <table id="imovel-tabela">
-                <thead><tr><th>Título</th><th>Tipo</th><th>Bairro</th><th>Valor</th><th>Foto</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Título</th><th>Tipo</th><th>Bairro</th><th>Valor</th><th>Foto</th><th>Captação</th><th>Status</th><th></th></tr></thead>
                 <tbody></tbody>
               </table>
               <p id="imovel-vazio" class="vazio">Nenhum imóvel.</p>
