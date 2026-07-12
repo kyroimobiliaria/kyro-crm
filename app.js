@@ -468,8 +468,9 @@ function atualizarCamposImovel() {
   document.getElementById('imovel-permuta-desc-wrap').style.display = permuta ? '' : 'none';
 
   const captacao = v('imovel-captacao-tipo');
-  document.getElementById('imovel-captacao-contato-wrap').style.display = captacao === 'exclusiva' ? 'none' : '';
-  document.getElementById('imovel-captador-wrap').style.display = captacao === 'exclusiva' ? '' : 'none';
+  const precisaContato = captacao === 'construtora' || captacao === 'parceria';
+  document.getElementById('imovel-captacao-contato-wrap').style.display = precisaContato ? '' : 'none';
+  document.getElementById('imovel-captador-wrap').style.display = precisaContato ? 'none' : '';
 }
 document.getElementById('imovel-permuta').addEventListener('change', atualizarCamposImovel);
 document.getElementById('imovel-captacao-tipo').addEventListener('change', atualizarCamposImovel);
@@ -489,65 +490,78 @@ document.getElementById('imovel-fotos').addEventListener('change', (e) => {
 
 imovelForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const id = v('imovel-id');
+  const btnSalvar = imovelForm.querySelector('button[type="submit"]');
+  if (btnSalvar.disabled) return;
+  const textoOriginal = btnSalvar.textContent;
+  btnSalvar.disabled = true;
+  btnSalvar.textContent = 'Salvando...';
 
-  // planta (opcional, um único arquivo)
-  let plantaUrl = v('imovel-planta-url') || null;
-  const plantaFile = document.getElementById('imovel-planta').files[0];
-  if (plantaFile && !isDemo()) {
-    const ext = (plantaFile.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `planta-${(id || 'novo')}-${Date.now()}.${ext}`;
-    const { error: upErr } = await sb.storage.from('fotos').upload(path, plantaFile, { upsert: true });
-    if (upErr) toast('Falha no upload da planta: ' + upErr.message);
-    else { const { data } = sb.storage.from('fotos').getPublicUrl(path); plantaUrl = data.publicUrl; }
-  }
+  try {
+    const id = v('imovel-id');
 
-  const permuta = v('imovel-permuta') === 'sim';
-  const captacaoTipo = v('imovel-captacao-tipo');
-
-  const payload = {
-    titulo: v('imovel-titulo').trim(),
-    tipo: v('imovel-tipo'),
-    bairro: v('imovel-bairro').trim(),
-    valor: Number(v('imovel-valor')) || 0,
-    status: v('imovel-status'),
-    descricao: v('imovel-descricao').trim(),
-    planta_url: plantaUrl,
-    permuta,
-    permuta_descricao: permuta ? v('imovel-permuta-descricao').trim() : null,
-    captacao_tipo: captacaoTipo,
-    captacao_contato: captacaoTipo !== 'exclusiva' ? v('imovel-captacao-contato').trim() : null,
-    corretor_captador_id: captacaoTipo === 'exclusiva' ? (v('imovel-corretor-captador') || null) : null,
-  };
-
-  let imovelId = id;
-  if (id) {
-    const { error } = await sb.from('imoveis').update(payload).eq('id', id);
-    if (error) return toast(error.message);
-  } else {
-    const { data: novoImovel, error } = await sb.from('imoveis').insert(payload).select().single();
-    if (error) return toast(error.message);
-    imovelId = novoImovel.id;
-  }
-
-  // envia cada foto selecionada como uma linha nova em imoveis_fotos
-  const fotosFiles = document.getElementById('imovel-fotos').files;
-  if (fotosFiles.length && !isDemo()) {
-    const jaExistentes = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).length;
-    for (let i = 0; i < fotosFiles.length; i++) {
-      const file = fotosFiles[i];
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `imovel-${imovelId}-${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await sb.storage.from('fotos').upload(path, file, { upsert: true });
-      if (upErr) { toast('Falha no upload de uma foto: ' + upErr.message); continue; }
-      const { data: pub } = sb.storage.from('fotos').getPublicUrl(path);
-      await sb.from('imoveis_fotos').insert({ imovel_id: imovelId, foto_url: pub.publicUrl, ordem: jaExistentes + i });
+    // planta (opcional, um único arquivo)
+    let plantaUrl = v('imovel-planta-url') || null;
+    const plantaFile = document.getElementById('imovel-planta').files[0];
+    if (plantaFile && !isDemo()) {
+      const ext = (plantaFile.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `planta-${(id || 'novo')}-${Date.now()}.${ext}`;
+      const { error: upErr } = await sb.storage.from('fotos').upload(path, plantaFile, { upsert: true });
+      if (upErr) toast('Falha no upload da planta: ' + upErr.message);
+      else { const { data } = sb.storage.from('fotos').getPublicUrl(path); plantaUrl = data.publicUrl; }
     }
-  }
 
-  resetImovelForm();
-  await Promise.all([carregarImoveis(), carregarImoveisFotos()]);
-  renderImoveis();
+    const permuta = v('imovel-permuta') === 'sim';
+    const captacaoTipo = v('imovel-captacao-tipo');
+    const precisaContato = captacaoTipo === 'construtora' || captacaoTipo === 'parceria';
+
+    const payload = {
+      titulo: v('imovel-titulo').trim(),
+      tipo: v('imovel-tipo'),
+      bairro: v('imovel-bairro').trim(),
+      valor: Number(v('imovel-valor')) || 0,
+      status: v('imovel-status'),
+      descricao: v('imovel-descricao').trim(),
+      planta_url: plantaUrl,
+      permuta,
+      permuta_descricao: permuta ? v('imovel-permuta-descricao').trim() : null,
+      captacao_tipo: captacaoTipo,
+      captacao_contato: precisaContato ? v('imovel-captacao-contato').trim() : null,
+      corretor_captador_id: !precisaContato ? (v('imovel-corretor-captador') || null) : null,
+    };
+
+    let imovelId = id;
+    if (id) {
+      const { error } = await sb.from('imoveis').update(payload).eq('id', id);
+      if (error) { toast(error.message); return; }
+    } else {
+      const { data: novoImovel, error } = await sb.from('imoveis').insert(payload).select().single();
+      if (error) { toast(error.message); return; }
+      imovelId = novoImovel.id;
+    }
+
+    // envia cada foto selecionada como uma linha nova em imoveis_fotos
+    const fotosFiles = document.getElementById('imovel-fotos').files;
+    if (fotosFiles.length && !isDemo()) {
+      const jaExistentes = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).length;
+      for (let i = 0; i < fotosFiles.length; i++) {
+        const file = fotosFiles[i];
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `imovel-${imovelId}-${Date.now()}-${i}.${ext}`;
+        const { error: upErr } = await sb.storage.from('fotos').upload(path, file, { upsert: true });
+        if (upErr) { toast('Falha no upload de uma foto: ' + upErr.message); continue; }
+        const { data: pub } = sb.storage.from('fotos').getPublicUrl(path);
+        await sb.from('imoveis_fotos').insert({ imovel_id: imovelId, foto_url: pub.publicUrl, ordem: jaExistentes + i });
+      }
+    }
+
+    resetImovelForm();
+    await Promise.all([carregarImoveis(), carregarImoveisFotos()]);
+    renderImoveis();
+    toast('Imóvel salvo com sucesso!');
+  } finally {
+    btnSalvar.disabled = false;
+    btnSalvar.textContent = textoOriginal;
+  }
 });
 document.getElementById('imovel-cancel').addEventListener('click', resetImovelForm);
 document.getElementById('imovel-filtro').addEventListener('change', renderImoveis);
@@ -626,14 +640,14 @@ function renderImoveis() {
     return true;
   });
 
-  const captacaoLabel = { exclusiva: 'Exclusiva', construtora: 'Construtora', parceria: 'Parceria' };
+  const captacaoLabel = { exclusiva: 'Exclusiva', sem_exclusividade: 'Sem exclusividade', construtora: 'Construtora', parceria: 'Parceria' };
 
   document.querySelector('#imovel-tabela tbody').innerHTML = f.map((i) => {
     const capa = db.imoveisFotos.filter((fo) => fo.imovel_id === i.id).sort((a, b) => a.ordem - b.ordem)[0];
     const fotoUrl = capa ? capa.foto_url : i.foto_url;
 
     let contato = '—';
-    if (i.captacao_tipo === 'exclusiva' && i.corretor_captador_id) {
+    if ((i.captacao_tipo === 'exclusiva' || i.captacao_tipo === 'sem_exclusividade') && i.corretor_captador_id) {
       const captador = db.corretores.find((c) => c.id === i.corretor_captador_id);
       contato = captador ? `Captado por ${captador.nome || captador.email}` : '—';
     } else if (i.captacao_contato) {
