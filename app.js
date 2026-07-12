@@ -15,7 +15,7 @@ let UID = null;    // id do usuário (ou 'demo' no modo demo)
 const isDemo = () => CONFIG.DEMO_MODE;
 
 // caches
-const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [] };
+const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [], imoveisFotos: [] };
 
 // controla se o Acomp está mostrando a semana ou o mês
 let acompModoMensal = false;
@@ -115,7 +115,7 @@ async function showView(name) {
   if (name === 'leads') { await carregarLeads(); renderLeads(); }
   else if (name === 'agenda') { await carregarLeads(); renderAgenda(); }
   else if (name === 'acomp') { await carregarAtividades(); renderAcomp(); }
-  else if (name === 'imoveis') { await carregarImoveis(); renderImoveis(); }
+  else if (name === 'imoveis') { await Promise.all([carregarImoveis(), carregarCorretores(), carregarImoveisFotos()]); popularSelectCaptador(); renderImoveis(); }
   else if (name === 'corretores') { await carregarCorretores(); renderCorretores(); }
   else if (name === 'dashboard') { await carregarTudo(); renderDashboard(); }
 }
@@ -139,6 +139,11 @@ async function carregarImoveis() {
   const { data, error } = await sb.from('imoveis').select('*').order('criado_em', { ascending: false });
   if (error) return toast(error.message);
   db.imoveis = data || [];
+}
+async function carregarImoveisFotos() {
+  const { data, error } = await sb.from('imoveis_fotos').select('*').order('ordem', { ascending: true });
+  if (error) return toast(error.message);
+  db.imoveisFotos = data || [];
 }
 async function carregarCorretores() {
   const { data, error } = await sb.from('profiles').select('*').order('nome');
@@ -448,32 +453,208 @@ document.getElementById('modal').addEventListener('click', (e) => { if (e.target
 
 // ============================ IMÓVEIS ============================
 const imovelForm = document.getElementById('imovel-form');
+
+function popularSelectCaptador() {
+  const sel = document.getElementById('imovel-corretor-captador');
+  if (!sel) return;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">— selecione —</option>' +
+    db.corretores.map((c) => `<option value="${c.id}">${esc(c.nome || c.email)}</option>`).join('');
+  if (atual) sel.value = atual;
+}
+
+function atualizarCamposImovel() {
+  const permuta = v('imovel-permuta') === 'sim';
+  document.getElementById('imovel-permuta-desc-wrap').style.display = permuta ? '' : 'none';
+
+  const captacao = v('imovel-captacao-tipo');
+  document.getElementById('imovel-captacao-contato-wrap').style.display = captacao === 'exclusiva' ? 'none' : '';
+  document.getElementById('imovel-captador-wrap').style.display = captacao === 'exclusiva' ? '' : 'none';
+}
+document.getElementById('imovel-permuta').addEventListener('change', atualizarCamposImovel);
+document.getElementById('imovel-captacao-tipo').addEventListener('change', atualizarCamposImovel);
+
+document.getElementById('imovel-fotos').addEventListener('change', (e) => {
+  const preview = document.getElementById('imovel-fotos-preview');
+  preview.innerHTML = '';
+  Array.from(e.target.files).forEach((file) => {
+    const img = document.createElement('img');
+    img.style.cssText = 'width:70px;height:70px;object-fit:cover;border-radius:6px';
+    const reader = new FileReader();
+    reader.onload = (ev) => { img.src = ev.target.result; };
+    reader.readAsDataURL(file);
+    preview.appendChild(img);
+  });
+});
+
 imovelForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = v('imovel-id');
-  let fotoUrl = v('imovel-foto-url') || null;
-  const file = document.getElementById('imovel-foto').files[0];
-  if (file && !isDemo()) {
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `${(id || UID || 'novo')}-${Date.now()}.${ext}`;
-    const { error: upErr } = await sb.storage.from('fotos').upload(path, file, { upsert: true });
-    if (upErr) toast('Falha no upload da foto: ' + upErr.message);
-    else { const { data } = sb.storage.from('fotos').getPublicUrl(path); fotoUrl = data.publicUrl; }
+
+  // planta (opcional, um único arquivo)
+  let plantaUrl = v('imovel-planta-url') || null;
+  const plantaFile = document.getElementById('imovel-planta').files[0];
+  if (plantaFile && !isDemo()) {
+    const ext = (plantaFile.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `planta-${(id || 'novo')}-${Date.now()}.${ext}`;
+    const { error: upErr } = await sb.storage.from('fotos').upload(path, plantaFile, { upsert: true });
+    if (upErr) toast('Falha no upload da planta: ' + upErr.message);
+    else { const { data } = sb.storage.from('fotos').getPublicUrl(path); plantaUrl = data.publicUrl; }
   }
+
+  const permuta = v('imovel-permuta') === 'sim';
+  const captacaoTipo = v('imovel-captacao-tipo');
+
   const payload = {
     titulo: v('imovel-titulo').trim(),
     tipo: v('imovel-tipo'),
     bairro: v('imovel-bairro').trim(),
     valor: Number(v('imovel-valor')) || 0,
     status: v('imovel-status'),
-    foto_url: fotoUrl,
+    descricao: v('imovel-descricao').trim(),
+    planta_url: plantaUrl,
+    permuta,
+    permuta_descricao: permuta ? v('imovel-permuta-descricao').trim() : null,
+    captacao_tipo: captacaoTipo,
+    captacao_contato: captacaoTipo !== 'exclusiva' ? v('imovel-captacao-contato').trim() : null,
+    corretor_captador_id: captacaoTipo === 'exclusiva' ? (v('imovel-corretor-captador') || null) : null,
   };
-  if (id) { const { error } = await sb.from('imoveis').update(payload).eq('id', id); if (error) return toast(error.message); }
-  else { const { error } = await sb.from('imoveis').insert(payload); if (error) return toast(error.message); }
-  resetImovelForm(); await carregarImoveis(); renderImoveis();
+
+  let imovelId = id;
+  if (id) {
+    const { error } = await sb.from('imoveis').update(payload).eq('id', id);
+    if (error) return toast(error.message);
+  } else {
+    const { data: novoImovel, error } = await sb.from('imoveis').insert(payload).select().single();
+    if (error) return toast(error.message);
+    imovelId = novoImovel.id;
+  }
+
+  // envia cada foto selecionada como uma linha nova em imoveis_fotos
+  const fotosFiles = document.getElementById('imovel-fotos').files;
+  if (fotosFiles.length && !isDemo()) {
+    const jaExistentes = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).length;
+    for (let i = 0; i < fotosFiles.length; i++) {
+      const file = fotosFiles[i];
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `imovel-${imovelId}-${Date.now()}-${i}.${ext}`;
+      const { error: upErr } = await sb.storage.from('fotos').upload(path, file, { upsert: true });
+      if (upErr) { toast('Falha no upload de uma foto: ' + upErr.message); continue; }
+      const { data: pub } = sb.storage.from('fotos').getPublicUrl(path);
+      await sb.from('imoveis_fotos').insert({ imovel_id: imovelId, foto_url: pub.publicUrl, ordem: jaExistentes + i });
+    }
+  }
+
+  resetImovelForm();
+  await Promise.all([carregarImoveis(), carregarImoveisFotos()]);
+  renderImoveis();
 });
 document.getElementById('imovel-cancel').addEventListener('click', resetImovelForm);
 document.getElementById('imovel-filtro').addEventListener('change', renderImoveis);
+document.getElementById('imovel-filtro-busca').addEventListener('input', renderImoveis);
+document.getElementById('imovel-filtro-captacao').addEventListener('change', renderImoveis);
+document.getElementById('imovel-filtro-permuta').addEventListener('change', renderImoveis);
+
+function resetImovelForm() {
+  imovelForm.reset(); vset('imovel-id', '');
+  vset('imovel-planta-url', '');
+  document.getElementById('imovel-planta-preview').classList.add('hidden');
+  document.getElementById('imovel-fotos-preview').innerHTML = '';
+  document.getElementById('imovel-form-title').textContent = 'Novo Imóvel';
+  document.getElementById('imovel-cancel').hidden = true;
+  atualizarCamposImovel();
+}
+function editarImovel(id) {
+  const i = db.imoveis.find((x) => x.id === id); if (!i) return;
+  vset('imovel-id', i.id); vset('imovel-titulo', i.titulo); vset('imovel-tipo', i.tipo || 'Revenda');
+  vset('imovel-bairro', i.bairro); vset('imovel-valor', i.valor || 0); vset('imovel-status', i.status || 'Disponível');
+  vset('imovel-descricao', i.descricao || '');
+  vset('imovel-permuta', i.permuta ? 'sim' : 'nao');
+  vset('imovel-permuta-descricao', i.permuta_descricao || '');
+  vset('imovel-captacao-tipo', i.captacao_tipo || 'exclusiva');
+  vset('imovel-captacao-contato', i.captacao_contato || '');
+  popularSelectCaptador();
+  vset('imovel-corretor-captador', i.corretor_captador_id || '');
+  vset('imovel-planta-url', i.planta_url || '');
+
+  const plantaPrev = document.getElementById('imovel-planta-preview');
+  if (i.planta_url) { plantaPrev.src = i.planta_url; plantaPrev.classList.remove('hidden'); } else plantaPrev.classList.add('hidden');
+
+  renderFotosExistentes(id);
+  atualizarCamposImovel();
+
+  document.getElementById('imovel-form-title').textContent = 'Editar Imóvel';
+  document.getElementById('imovel-cancel').hidden = false;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function renderFotosExistentes(imovelId) {
+  const wrap = document.getElementById('imovel-fotos-preview');
+  const fotos = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).sort((a, b) => a.ordem - b.ordem);
+  wrap.innerHTML = fotos.map((f) => `
+    <div style="position:relative;display:inline-block">
+      <img src="${esc(f.foto_url)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px" alt="">
+      <button type="button" onclick="excluirFotoImovel('${f.id}')" style="position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer">✕</button>
+    </div>`).join('');
+}
+async function excluirFotoImovel(fotoId) {
+  if (!confirm('Excluir esta foto?')) return;
+  const { error } = await sb.from('imoveis_fotos').delete().eq('id', fotoId);
+  if (error) return toast(error.message);
+  await carregarImoveisFotos();
+  const id = v('imovel-id');
+  if (id) renderFotosExistentes(id);
+  renderImoveis();
+}
+async function excluirImovel(id) {
+  if (!confirm('Excluir este imóvel?')) return;
+  const { error } = await sb.from('imoveis').delete().eq('id', id);
+  if (error) return toast(error.message);
+  await carregarImoveis(); renderImoveis();
+}
+function renderImoveis() {
+  const filtroTipo = v('imovel-filtro');
+  const buscaTxt = (v('imovel-filtro-busca') || '').toLowerCase();
+  const filtroCaptacao = v('imovel-filtro-captacao');
+  const filtroPermuta = v('imovel-filtro-permuta');
+
+  const f = db.imoveis.filter((i) => {
+    if (filtroTipo && i.tipo !== filtroTipo) return false;
+    if (filtroCaptacao && i.captacao_tipo !== filtroCaptacao) return false;
+    if (filtroPermuta === 'sim' && !i.permuta) return false;
+    if (filtroPermuta === 'nao' && i.permuta) return false;
+    if (buscaTxt && !`${i.titulo} ${i.bairro}`.toLowerCase().includes(buscaTxt)) return false;
+    return true;
+  });
+
+  const captacaoLabel = { exclusiva: 'Exclusiva', construtora: 'Construtora', parceria: 'Parceria' };
+
+  document.querySelector('#imovel-tabela tbody').innerHTML = f.map((i) => {
+    const capa = db.imoveisFotos.filter((fo) => fo.imovel_id === i.id).sort((a, b) => a.ordem - b.ordem)[0];
+    const fotoUrl = capa ? capa.foto_url : i.foto_url;
+
+    let contato = '—';
+    if (i.captacao_tipo === 'exclusiva' && i.corretor_captador_id) {
+      const captador = db.corretores.find((c) => c.id === i.corretor_captador_id);
+      contato = captador ? `Captado por ${captador.nome || captador.email}` : '—';
+    } else if (i.captacao_contato) {
+      contato = i.captacao_contato;
+    }
+
+    return `
+    <tr>
+      <td>${esc(i.titulo)}</td><td>${esc(i.tipo)}</td><td>${esc(i.bairro)}</td>
+      <td>${money(i.valor)}</td>
+      <td>${fotoUrl ? `<img src="${esc(fotoUrl)}" class="foto-mini" alt="">` : '—'}</td>
+      <td>${captacaoLabel[i.captacao_tipo] || '—'}${i.permuta ? ' · permuta' : ''}<div class="muted" style="font-size:11px">${esc(contato)}</div></td>
+      <td>${esc(i.status)}</td>
+      <td><div class="row-actions">
+        <button class="icon-btn edit" onclick="editarImovel('${i.id}')">Editar</button>
+        <button class="icon-btn del" onclick="excluirImovel('${i.id}')">Excluir</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('imovel-vazio').style.display = f.length ? 'none' : 'block';
+}
 
 // ---------------- Exportar CSV ----------------
 function exportCSV(rows, cols, filename) {
@@ -506,45 +687,6 @@ function exportarImoveis() {
 }
 document.getElementById('export-leads').addEventListener('click', exportarLeads);
 document.getElementById('export-imoveis').addEventListener('click', exportarImoveis);
-function resetImovelForm() {
-  imovelForm.reset(); vset('imovel-id', '');
-  vset('imovel-foto-url', '');
-  document.getElementById('imovel-foto-preview').classList.add('hidden');
-  document.getElementById('imovel-form-title').textContent = 'Novo Imóvel';
-  document.getElementById('imovel-cancel').hidden = true;
-}
-function editarImovel(id) {
-  const i = db.imoveis.find((x) => x.id === id); if (!i) return;
-  vset('imovel-id', i.id); vset('imovel-titulo', i.titulo); vset('imovel-tipo', i.tipo || 'Revenda');
-  vset('imovel-bairro', i.bairro); vset('imovel-valor', i.valor || 0); vset('imovel-status', i.status || 'Disponível');
-  vset('imovel-foto-url', i.foto_url || '');
-  const prev = document.getElementById('imovel-foto-preview');
-  if (i.foto_url) { prev.src = i.foto_url; prev.classList.remove('hidden'); } else prev.classList.add('hidden');
-  document.getElementById('imovel-form-title').textContent = 'Editar Imóvel';
-  document.getElementById('imovel-cancel').hidden = false;
-}
-async function excluirImovel(id) {
-  if (!confirm('Excluir este imóvel?')) return;
-  const { error } = await sb.from('imoveis').delete().eq('id', id);
-  if (error) return toast(error.message);
-  await carregarImoveis(); renderImoveis();
-}
-function renderImoveis() {
-  const filtro = v('imovel-filtro');
-  const f = db.imoveis.filter((i) => !filtro || i.tipo === filtro);
-  document.querySelector('#imovel-tabela tbody').innerHTML = f.map((i) => `
-    <tr>
-      <td>${esc(i.titulo)}</td><td>${esc(i.tipo)}</td><td>${esc(i.bairro)}</td>
-      <td>${money(i.valor)}</td>
-      <td>${i.foto_url ? `<img src="${esc(i.foto_url)}" class="foto-mini" alt="">` : '—'}</td>
-      <td>${esc(i.status)}</td>
-      <td><div class="row-actions">
-        <button class="icon-btn edit" onclick="editarImovel('${i.id}')">Editar</button>
-        <button class="icon-btn del" onclick="excluirImovel('${i.id}')">Excluir</button>
-      </div></td>
-    </tr>`).join('');
-  document.getElementById('imovel-vazio').style.display = f.length ? 'none' : 'block';
-}
 
 // ============================ CORRETORES (GERENTE) ============================
 document.getElementById('novo-acesso-form').addEventListener('submit', async (e) => {
