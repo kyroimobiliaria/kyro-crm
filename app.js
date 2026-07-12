@@ -253,7 +253,7 @@ function renderLeads() {
   const f = db.leads.filter((l) => [l.nome, l.telefone, l.nicho, l.bairro, l.etiquetas].join(' ').toLowerCase().includes(t));
   document.querySelector('#lead-tabela tbody').innerHTML = f.map((l) => `
     <tr>
-      <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span><div class="muted" style="font-size:11px">${esc(l.etiquetas || '')}</div></td>
+      <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span><div style="font-size:11px;margin-top:2px">${renderTags(l.etiquetas)}</div></td>
       <td><span class="tag t-${l.temperatura}">${tempLabel(l.temperatura)}</span></td>
       <td>${esc(l.nicho || '—')}</td>
       <td>${esc(l.status || 'Novo')}</td>
@@ -421,7 +421,7 @@ async function ajustarAtividade(ev, categoria, dataStr, delta) {
 // ============================ DETALHE DO LEAD (MODAL) ============================
 function openLeadDetail(id) {
   const l = db.leads.find((x) => x.id === id); if (!l) return;
-  const tags = (l.etiquetas || '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join(' ') || '—';
+  const tags = renderTags(l.etiquetas) || '—';
   const html = `
     <h2 style="color:var(--gold);margin-top:0">${esc(l.nome)}</h2>
     <div class="row" style="margin-bottom:6px">
@@ -653,6 +653,19 @@ function v(id) { return document.getElementById(id).value; }
 function vset(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
 function esc(t) { return String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function money(v) { return 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR'); }
+
+// cores fixas pra etiqueta: a mesma palavra sempre cai na mesma cor
+const TAG_CORES = ['#d4a017', '#4a90d9', '#5cb85c', '#d9534f', '#9b59b6', '#e67e22', '#1abc9c', '#e91e63'];
+function corDaTag(tag) {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  return TAG_CORES[Math.abs(hash) % TAG_CORES.length];
+}
+function renderTags(etiquetas) {
+  return (etiquetas || '').split(',').map((t) => t.trim()).filter(Boolean)
+    .map((t) => `<span class="chip" style="background:${corDaTag(t)}22;border:1px solid ${corDaTag(t)};color:${corDaTag(t)}">${esc(t)}</span>`)
+    .join(' ');
+}
 function tempLabel(t) { return t === 'quente' ? '🔥 Quente' : t === 'frio' ? '🧊 Frio' : 'Morno'; }
 function fmtDateTime(iso) { return new Date(iso).toLocaleString('pt-BR'); }
 function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
