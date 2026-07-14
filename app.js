@@ -531,8 +531,9 @@ imovelForm.addEventListener('submit', async (e) => {
 
     let imovelId = id;
     if (id) {
-      const { error } = await sb.from('imoveis').update(payload).eq('id', id);
+      const { data: atualizado, error } = await sb.from('imoveis').update(payload).eq('id', id).select();
       if (error) { toast(error.message); return; }
+      if (!atualizado || atualizado.length === 0) { toast('Você não tem permissão para editar este imóvel.'); return; }
     } else {
       const { data: novoImovel, error } = await sb.from('imoveis').insert(payload).select().single();
       if (error) { toast(error.message); return; }
@@ -621,8 +622,9 @@ async function excluirFotoImovel(fotoId) {
 }
 async function excluirImovel(id) {
   if (!confirm('Excluir este imóvel?')) return;
-  const { error } = await sb.from('imoveis').delete().eq('id', id);
+  const { data: excluido, error } = await sb.from('imoveis').delete().eq('id', id).select();
   if (error) return toast(error.message);
+  if (!excluido || excluido.length === 0) { toast('Você não tem permissão para excluir este imóvel.'); return; }
   await carregarImoveis(); renderImoveis();
 }
 function renderImoveis() {
@@ -656,7 +658,7 @@ function renderImoveis() {
 
     return `
     <tr>
-      <td>${esc(i.titulo)}</td><td>${esc(i.tipo)}</td><td>${esc(i.bairro)}</td>
+      <td><span class="lead-link" onclick="openImovelDetail('${i.id}')">${esc(i.titulo)}</span></td><td>${esc(i.tipo)}</td><td>${esc(i.bairro)}</td>
       <td>${money(i.valor)}</td>
       <td>${fotoUrl ? `<img src="${esc(fotoUrl)}" class="foto-mini" alt="">` : '—'}</td>
       <td>${captacaoLabel[i.captacao_tipo] || '—'}${i.permuta ? ' · permuta' : ''}<div class="muted" style="font-size:11px">${esc(contato)}</div></td>
@@ -668,6 +670,48 @@ function renderImoveis() {
     </tr>`;
   }).join('');
   document.getElementById('imovel-vazio').style.display = f.length ? 'none' : 'block';
+}
+
+function openImovelDetail(id) {
+  const i = db.imoveis.find((x) => x.id === id); if (!i) return;
+  const fotos = db.imoveisFotos.filter((f) => f.imovel_id === id).sort((a, b) => a.ordem - b.ordem);
+  const capaUrl = fotos[0] ? fotos[0].foto_url : i.foto_url;
+
+  const galeria = fotos.length > 1
+    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${fotos.map((f) => `<img src="${esc(f.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px" alt="">`).join('')}</div>`
+    : '';
+
+  const captacaoLabel = { exclusiva: 'Exclusiva', sem_exclusividade: 'Sem exclusividade', construtora: 'Construtora', parceria: 'Parceria' };
+  let contato = '—';
+  if ((i.captacao_tipo === 'exclusiva' || i.captacao_tipo === 'sem_exclusividade') && i.corretor_captador_id) {
+    const captador = db.corretores.find((c) => c.id === i.corretor_captador_id);
+    contato = captador ? `Captado por ${captador.nome || captador.email}` : '—';
+  } else if (i.captacao_contato) {
+    contato = i.captacao_contato;
+  }
+
+  const html = `
+    <h2 style="color:var(--gold);margin-top:0">${esc(i.titulo)}</h2>
+    ${capaUrl ? `<img src="${esc(capaUrl)}" style="width:100%;max-height:280px;object-fit:cover;border-radius:8px" alt="">` : ''}
+    ${galeria}
+    <div class="row" style="margin-top:12px">
+      <div><div class="muted" style="font-size:11px">Tipo</div>${esc(i.tipo || '—')}</div>
+      <div><div class="muted" style="font-size:11px">Bairro</div>${esc(i.bairro || '—')}</div>
+    </div>
+    <div class="row">
+      <div><div class="muted" style="font-size:11px">Valor</div>${money(i.valor)}</div>
+      <div><div class="muted" style="font-size:11px">Status</div>${esc(i.status || '—')}</div>
+    </div>
+    <p><b>Captação:</b> ${captacaoLabel[i.captacao_tipo] || '—'} — ${esc(contato)}</p>
+    ${i.permuta ? `<p><b>Aceita permuta:</b> ${esc(i.permuta_descricao || 'Sim')}</p>` : ''}
+    ${i.planta_url ? `<p><b>Planta:</b><br><img src="${esc(i.planta_url)}" style="max-width:220px;border-radius:8px;margin-top:6px" alt="planta"></p>` : ''}
+    <p><b>Descrição:</b><br>${esc(i.descricao || '—').replace(/\n/g, '<br>')}</p>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn-gold" onclick="editarImovel('${i.id}');fecharModal()">Editar</button>
+      <button class="btn-ghost" onclick="fecharModal()">Fechar</button>
+    </div>`;
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal').classList.remove('hidden');
 }
 
 // ---------------- Exportar CSV ----------------
