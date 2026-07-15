@@ -141,6 +141,14 @@
         <h1 class="page-title">Acomp — Produtividade da semana</h1>
         <p class="muted">Clique no quadro para <b>+1</b>. Clique com o botão direito para <b>-1</b> (corrigir engano).</p>
         <div class="card">
+          <h2>Meu foco de atuação</h2>
+          <p class="muted" style="margin-top:-8px">Descreva seu nicho ou especialidade. O gestor vê isso na hora de distribuir leads novos.</p>
+          <div class="row">
+            <label style="flex:1">Foco<input id="corretor-foco-nicho" placeholder="ex: alto padrão, lançamentos zona sul..." /></label>
+            <button id="salvar-foco-nicho" class="btn-gold" style="align-self:flex-end;height:38px">Salvar</button>
+          </div>
+        </div>
+        <div class="card">
           <div class="table-wrap">
             <table id="acomp-tabela">
               <thead><tr><th>Atividade</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th>Dom</th><th>Total</th></tr></thead>
@@ -269,6 +277,68 @@
                 <tbody></tbody>
               </table>
               <p id="imovel-vazio" class="vazio">Nenhum imóvel.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ROLETA DE LEADS (gestor) ===== -->
+      <section id="roleta" class="view">
+        <h1 class="page-title">Roleta de Leads</h1>
+        <div class="grid-2">
+          <div class="card">
+            <h2>Cadastrar lead pra distribuir</h2>
+            <form id="roleta-form">
+              <input type="hidden" id="roleta-id-reatribuicao" />
+              <div class="row">
+                <label>Nome *<input id="roleta-nome" required /></label>
+                <label>Telefone<input id="roleta-telefone" placeholder="(62) 99999-0000" /></label>
+              </div>
+              <div class="row">
+                <label>Origem
+                  <select id="roleta-origem">
+                    <option value="lista_oportunidades">Lista de oportunidades</option>
+                    <option value="trafego_pago">Tráfego pago</option>
+                    <option value="carteira">Carteira</option>
+                    <option value="outros">Outros</option>
+                  </select>
+                </label>
+                <label id="roleta-origem-desc-wrap" style="display:none">Descreva a origem<input id="roleta-origem-descricao" /></label>
+              </div>
+              <div class="row">
+                <label>Urgente?
+                  <select id="roleta-urgente">
+                    <option value="nao" selected>Não</option>
+                    <option value="sim">Sim</option>
+                  </select>
+                </label>
+                <label id="roleta-prazo-wrap" style="display:none">Prazo pra atender
+                  <select id="roleta-prazo-horas">
+                    <option value="1">1 hora</option>
+                    <option value="2">2 horas</option>
+                    <option value="4">4 horas</option>
+                    <option value="8">8 horas</option>
+                    <option value="24">24 horas</option>
+                  </select>
+                </label>
+              </div>
+              <label>Atribuir pra corretor
+                <select id="roleta-corretor"></select>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn-gold">Distribuir lead</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Fila de leads da roleta</h2>
+            <div class="table-wrap">
+              <table id="roleta-tabela">
+                <thead><tr><th>Nome</th><th>Corretor</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+              <p id="roleta-vazio" class="vazio">Nenhum lead na roleta.</p>
             </div>
           </div>
         </div>
