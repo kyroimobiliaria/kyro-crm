@@ -38,10 +38,11 @@ const ROLE_NAV = {
   agenda:     ['corretor', 'gerente', 'diretoria'],
   acomp:      ['corretor', 'gerente', 'diretoria'],
   imoveis:    ['secretaria', 'corretor', 'gerente', 'diretoria'],
+  roleta:     ['gerente', 'diretoria'],
   corretores: ['gerente', 'diretoria'],
   dashboard:  ['gerente', 'diretoria', 'secretaria'],
 };
-const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', corretores: 'Corretores', dashboard: 'Dashboard' };
+const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', roleta: 'Roleta de Leads', corretores: 'Corretores', dashboard: 'Dashboard' };
 
 // ---------------- Auth ----------------
 async function init() {
@@ -114,8 +115,9 @@ async function showView(name) {
   document.getElementById(name).classList.add('active');
   if (name === 'leads') { await carregarLeads(); renderLeads(); }
   else if (name === 'agenda') { await carregarLeads(); renderAgenda(); }
-  else if (name === 'acomp') { await carregarAtividades(); renderAcomp(); }
+  else if (name === 'acomp') { await carregarAtividades(); vset('corretor-foco-nicho', (ME && ME.foco_nicho) || ''); renderAcomp(); }
   else if (name === 'imoveis') { await Promise.all([carregarImoveis(), carregarCorretores(), carregarImoveisFotos()]); popularSelectCaptador(); renderImoveis(); }
+  else if (name === 'roleta') { await Promise.all([carregarLeads(), carregarCorretores()]); popularSelectRoletaCorretor(); renderRoleta(); }
   else if (name === 'corretores') { await carregarCorretores(); renderCorretores(); }
   else if (name === 'dashboard') { await carregarTudo(); renderDashboard(); }
 }
@@ -181,6 +183,10 @@ leadForm.addEventListener('submit', async (e) => {
 
     const { error } = await sb.from('leads').update(payload).eq('id', id);
     if (error) return toast(error.message);
+
+    if (leadAntigo && leadAntigo.roleta_status === 'aguardando_atendimento') {
+      await sb.from('leads').update({ roleta_status: 'atendido' }).eq('id', id);
+    }
 
     if (!isDemo() && statusAntigo && statusAntigo !== payload.status) {
       await sb.from('eventos').insert({
@@ -252,13 +258,22 @@ function waLead(id) {
   const url = waLink(l.telefone, l.nome);
   if (url === '#') return toast('Lead sem telefone.');
   window.open(url, '_blank');
+  marcarLeadAtendido(id);
+}
+async function marcarLeadAtendido(id) {
+  const l = db.leads.find((x) => x.id === id);
+  if (!l || l.roleta_status !== 'aguardando_atendimento') return;
+  const { error } = await sb.from('leads').update({ roleta_status: 'atendido' }).eq('id', id);
+  if (error) return;
+  l.roleta_status = 'atendido';
+  renderLeads();
 }
 function renderLeads() {
   const t = v('lead-busca').toLowerCase();
   const f = db.leads.filter((l) => [l.nome, l.telefone, l.nicho, l.bairro, l.etiquetas].join(' ').toLowerCase().includes(t));
   document.querySelector('#lead-tabela tbody').innerHTML = f.map((l) => `
     <tr>
-      <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span><div style="font-size:11px;margin-top:2px">${renderTags(l.etiquetas)}</div></td>
+      <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span>${l.roleta_status === 'aguardando_atendimento' ? '<div><span class="tag" style="background:#e67e22;color:#fff">⏳ Aguardando atendimento</span></div>' : ''}<div style="font-size:11px;margin-top:2px">${renderTags(l.etiquetas)}</div></td>
       <td><span class="tag t-${l.temperatura}">${tempLabel(l.temperatura)}</span></td>
       <td>${esc(l.nicho || '—')}</td>
       <td>${esc(l.status || 'Novo')}</td>
@@ -303,6 +318,14 @@ function renderAgenda() {
 }
 
 // ============================ ACOMP (PRODUTIVIDADE DIÁRIA / MENSAL) ============================
+document.getElementById('salvar-foco-nicho').addEventListener('click', async () => {
+  const foco = v('corretor-foco-nicho').trim();
+  const { error } = await sb.rpc('atualizar_meu_foco', { novo_foco: foco });
+  if (error) return toast(error.message);
+  if (ME) ME.foco_nicho = foco;
+  toast('Foco atualizado!');
+});
+
 function renderAcomp() {
   garantirUIAcompMensal();
 
@@ -360,9 +383,11 @@ function renderAcompSemanalConteudo() {
       const qtd = reg ? reg.quantidade : 0;
       total += qtd;
       return `<td style="text-align:center">
-        <div class="sqn ${qtd ? 'tem' : ''}"
+        <div class="sqn ${qtd ? 'tem' : ''}" style="position:relative;display:inline-block"
              onclick="ajustarAtividade(event,'${cat.key}','${ds}',1)"
-             oncontextmenu="ajustarAtividade(event,'${cat.key}','${ds}',-1)">${qtd}</div>
+             oncontextmenu="ajustarAtividade(event,'${cat.key}','${ds}',-1)">${qtd}<span
+             onclick="ajustarAtividade(event,'${cat.key}','${ds}',-1)"
+             style="position:absolute;top:-8px;right:-8px;background:var(--red);color:#fff;border-radius:50%;width:20px;height:20px;font-size:13px;line-height:20px;text-align:center;cursor:pointer">−</span></div>
       </td>`;
     }).join('');
     return `<tr><td>${cat.label}</td>${cels}<td style="text-align:center;font-weight:700;color:var(--gold)">${total}</td></tr>`;
@@ -391,6 +416,7 @@ function renderAcompMensalConteudo() {
 
 async function ajustarAtividade(ev, categoria, dataStr, delta) {
   ev.preventDefault();
+  ev.stopPropagation();
   const filtroCorretor = (a) => (isDemo() ? true : a.corretor_id === UID);
   const reg = db.atividades.find((a) => a.categoria === categoria && a.data === dataStr && filtroCorretor(a));
   const novo = Math.max(0, (reg ? reg.quantidade : 0) + delta);
@@ -702,7 +728,7 @@ function openImovelDetail(id) {
       <div><div class="muted" style="font-size:11px">Valor</div>${money(i.valor)}</div>
       <div><div class="muted" style="font-size:11px">Status</div>${esc(i.status || '—')}</div>
     </div>
-    <p><b>Captação:</b> ${captacaoLabel[i.captacao_tipo] || '—'} — ${esc(contato)}</p>
+    <p><b>Captação:</b> ${captacaoLabel[i.captacao_tipo] || '—'}${contato !== '—' ? ' — ' + esc(contato) : ''}</p>
     ${i.permuta ? `<p><b>Aceita permuta:</b> ${esc(i.permuta_descricao || 'Sim')}</p>` : ''}
     ${i.planta_url ? `<p><b>Planta:</b><br><img src="${esc(i.planta_url)}" style="max-width:220px;border-radius:8px;margin-top:6px" alt="planta"></p>` : ''}
     <p><b>Descrição:</b><br>${esc(i.descricao || '—').replace(/\n/g, '<br>')}</p>
@@ -712,6 +738,110 @@ function openImovelDetail(id) {
     </div>`;
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal').classList.remove('hidden');
+}
+
+// ============================ ROLETA DE LEADS ============================
+function popularSelectRoletaCorretor() {
+  const sel = document.getElementById('roleta-corretor');
+  if (!sel) return;
+  const corretores = db.corretores.filter((c) => c.role === 'corretor');
+  sel.innerHTML = corretores.map((c) => {
+    const foco = c.foco_nicho ? ` — foco: ${esc(c.foco_nicho)}` : '';
+    return `<option value="${c.id}">${esc(c.nome || c.email)}${foco}</option>`;
+  }).join('');
+}
+
+document.getElementById('roleta-origem').addEventListener('change', () => {
+  document.getElementById('roleta-origem-desc-wrap').style.display = v('roleta-origem') === 'outros' ? '' : 'none';
+});
+document.getElementById('roleta-urgente').addEventListener('change', () => {
+  document.getElementById('roleta-prazo-wrap').style.display = v('roleta-urgente') === 'sim' ? '' : 'none';
+});
+
+const roletaForm = document.getElementById('roleta-form');
+roletaForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = roletaForm.querySelector('button[type="submit"]');
+  if (btn.disabled) return;
+  const textoOriginal = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Distribuindo...';
+
+  try {
+    const corretorId = v('roleta-corretor');
+    if (!corretorId) { toast('Escolha um corretor.'); return; }
+
+    const urgente = v('roleta-urgente') === 'sim';
+    const idReatribuicao = v('roleta-id-reatribuicao');
+
+    const dadosRoleta = {
+      corretor_id: corretorId,
+      urgente,
+      prazo_atendimento: urgente ? new Date(Date.now() + Number(v('roleta-prazo-horas')) * 3600000).toISOString() : null,
+      roleta_status: 'aguardando_atendimento',
+    };
+
+    if (idReatribuicao) {
+      const { data, error } = await sb.from('leads').update(dadosRoleta).eq('id', idReatribuicao).select();
+      if (error) { toast(error.message); return; }
+      if (!data || data.length === 0) { toast('Você não tem permissão pra reatribuir este lead.'); return; }
+    } else {
+      const payload = {
+        nome: v('roleta-nome').trim(),
+        telefone: v('roleta-telefone').trim(),
+        origem: v('roleta-origem'),
+        origem_descricao: v('roleta-origem') === 'outros' ? v('roleta-origem-descricao').trim() : null,
+        atribuido_por: UID,
+        status: 'Novo',
+        temperatura: 'morno',
+        ...dadosRoleta,
+      };
+      const { data: novoLead, error } = await sb.from('leads').insert(payload).select().single();
+      if (error) { toast(error.message); return; }
+      await sb.from('eventos').insert({ tipo: 'lead_criado', corretor_id: UID, lead_id: novoLead.id });
+    }
+
+    roletaForm.reset();
+    vset('roleta-id-reatribuicao', '');
+    document.getElementById('roleta-origem-desc-wrap').style.display = 'none';
+    document.getElementById('roleta-prazo-wrap').style.display = 'none';
+    await carregarLeads();
+    renderRoleta();
+    toast('Lead distribuído!');
+  } finally {
+    btn.disabled = false; btn.textContent = textoOriginal;
+  }
+});
+
+function renderRoleta() {
+  const fila = db.leads.filter((l) => l.roleta_status === 'aguardando_atendimento' || l.roleta_status === 'expirado');
+  document.querySelector('#roleta-tabela tbody').innerHTML = fila.map((l) => {
+    const corretor = db.corretores.find((c) => c.id === l.corretor_id);
+    const statusLabel = l.roleta_status === 'expirado' ? '⏰ Expirado, aguardando reatribuição' : 'Aguardando atendimento';
+    const prazo = l.prazo_atendimento ? fmtDateTime(l.prazo_atendimento) : '—';
+    return `<tr>
+      <td>${esc(l.nome)}</td>
+      <td>${l.roleta_status === 'expirado' ? '—' : esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
+      <td>${statusLabel}</td>
+      <td>${esc(prazo)}</td>
+      <td>${l.roleta_status === 'expirado' ? `<button class="icon-btn edit" onclick="reatribuirLead('${l.id}')">Reatribuir</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('roleta-vazio').style.display = fila.length ? 'none' : 'block';
+}
+
+function reatribuirLead(id) {
+  const l = db.leads.find((x) => x.id === id); if (!l) return;
+  vset('roleta-nome', l.nome);
+  vset('roleta-telefone', l.telefone || '');
+  vset('roleta-origem', l.origem || 'lista_oportunidades');
+  vset('roleta-origem-descricao', l.origem_descricao || '');
+  document.getElementById('roleta-origem-desc-wrap').style.display = l.origem === 'outros' ? '' : 'none';
+  vset('roleta-urgente', l.urgente ? 'sim' : 'nao');
+  document.getElementById('roleta-prazo-wrap').style.display = l.urgente ? '' : 'none';
+  popularSelectRoletaCorretor();
+  vset('roleta-id-reatribuicao', id);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Ajuste e clique em Distribuir lead pra reatribuir.');
 }
 
 // ---------------- Exportar CSV ----------------
