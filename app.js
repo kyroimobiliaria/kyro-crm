@@ -15,7 +15,7 @@ let UID = null;    // id do usuário (ou 'demo' no modo demo)
 const isDemo = () => CONFIG.DEMO_MODE;
 
 // caches
-const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [], imoveisFotos: [] };
+const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [], imoveisFotos: [], agendaGerente: [] };
 
 // controla se o Acomp está mostrando a semana ou o mês
 let acompModoMensal = false;
@@ -39,10 +39,11 @@ const ROLE_NAV = {
   acomp:      ['corretor', 'gerente', 'diretoria'],
   imoveis:    ['secretaria', 'corretor', 'gerente', 'diretoria'],
   roleta:     ['gerente', 'diretoria'],
+  agendagerente: ['gerente', 'diretoria'],
   corretores: ['gerente', 'diretoria'],
   dashboard:  ['gerente', 'diretoria', 'secretaria'],
 };
-const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', roleta: 'Roleta de Leads', corretores: 'Corretores', dashboard: 'Dashboard' };
+const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', roleta: 'Roleta de Leads', agendagerente: 'Agenda do Gerente', corretores: 'Corretores', dashboard: 'Dashboard' };
 
 // ---------------- Auth ----------------
 async function init() {
@@ -113,11 +114,12 @@ async function showView(name) {
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach((s) => s.classList.remove('active'));
   document.getElementById(name).classList.add('active');
-  if (name === 'leads') { await carregarLeads(); renderLeads(); }
+  if (name === 'leads') { await Promise.all([carregarLeads(), carregarCorretores()]); renderLeads(); }
   else if (name === 'agenda') { await carregarLeads(); renderAgenda(); }
   else if (name === 'acomp') { await carregarAtividades(); vset('corretor-foco-nicho', (ME && ME.foco_nicho) || ''); renderAcomp(); }
   else if (name === 'imoveis') { await Promise.all([carregarImoveis(), carregarCorretores(), carregarImoveisFotos()]); popularSelectCaptador(); renderImoveis(); }
   else if (name === 'roleta') { await Promise.all([carregarLeads(), carregarCorretores()]); popularSelectRoletaCorretor(); renderRoleta(); }
+  else if (name === 'agendagerente') { await Promise.all([carregarAgendaGerente(), carregarCorretores()]); renderAgendaGerente(); }
   else if (name === 'corretores') { await carregarCorretores(); renderCorretores(); }
   else if (name === 'dashboard') { await carregarTudo(); renderDashboard(); }
 }
@@ -453,6 +455,8 @@ async function ajustarAtividade(ev, categoria, dataStr, delta) {
 function openLeadDetail(id) {
   const l = db.leads.find((x) => x.id === id); if (!l) return;
   const tags = renderTags(l.etiquetas) || '—';
+  const gerentesOptions = db.corretores.filter((c) => c.role === 'gerente')
+    .map((c) => `<option value="${c.id}">${esc(c.nome || c.email)}</option>`).join('');
   const html = `
     <h2 style="color:var(--gold);margin-top:0">${esc(l.nome)}</h2>
     <div class="row" style="margin-bottom:6px">
@@ -467,12 +471,42 @@ function openLeadDetail(id) {
     <p><b>Agendamento:</b> ${l.agendamento ? esc(fmtDateTime(l.agendamento)) + (l.agendamento_obs ? ' — ' + esc(l.agendamento_obs) : '') : '—'}</p>
     <p><b>Etiquetas:</b> ${tags}</p>
     <p><b>Anotações:</b><br>${esc(l.anotacoes || '—').replace(/\n/g, '<br>')}</p>
+    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px">
+      <p><b>Agendar Gerente</b></p>
+      <div class="row">
+        <label>Gerente<select id="ag-gerente-select">${gerentesOptions || '<option value="">— nenhum gerente cadastrado —</option>'}</select></label>
+        <label>Data e hora<input id="ag-data-hora" type="datetime-local" /></label>
+      </div>
+      <label>Observação<input id="ag-observacao" placeholder="ex: visita ao imóvel X" /></label>
+      <button type="button" class="btn-gold" onclick="solicitarAgendaGerente('${l.id}')">Pedir acompanhamento</button>
+    </div>
     <div class="actions" style="margin-top:14px">
       <button class="btn-gold" onclick="editarLead('${l.id}');fecharModal()">Editar</button>
       <button class="btn-ghost" onclick="fecharModal()">Fechar</button>
     </div>`;
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal').classList.remove('hidden');
+}
+async function solicitarAgendaGerente(leadId) {
+  const gerenteId = v('ag-gerente-select');
+  const dataHora = v('ag-data-hora');
+  if (!gerenteId) return toast('Escolha um gerente.');
+  if (!dataHora) return toast('Escolha data e hora.');
+
+  const { error } = await sb.from('agenda_gerente').insert({
+    gerente_id: gerenteId,
+    corretor_id: UID,
+    lead_id: leadId,
+    data_hora: new Date(dataHora).toISOString(),
+    observacao: v('ag-observacao').trim() || null,
+  });
+
+  if (error) {
+    if (error.code === '23505') return toast('Esse horário já está ocupado com esse gerente. Escolhe outro.');
+    return toast(error.message);
+  }
+  toast('Pedido enviado ao gerente!');
+  fecharModal();
 }
 function fecharModal() { document.getElementById('modal').classList.add('hidden'); }
 document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') fecharModal(); });
@@ -842,6 +876,50 @@ function reatribuirLead(id) {
   vset('roleta-id-reatribuicao', id);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast('Ajuste e clique em Distribuir lead pra reatribuir.');
+}
+
+// ============================ AGENDA DO GERENTE ============================
+async function carregarAgendaGerente() {
+  const { data, error } = await sb.from('agenda_gerente').select('*').order('data_hora', { ascending: true });
+  if (error) { toast(error.message); return; }
+  db.agendaGerente = data || [];
+}
+
+function renderAgendaGerente() {
+  const pendentes = db.agendaGerente.filter((a) => a.status === 'pendente');
+  const confirmados = db.agendaGerente.filter((a) => a.status === 'aceito');
+
+  document.querySelector('#ag-pendentes-tabela tbody').innerHTML = pendentes.map((a) => {
+    const corretor = db.corretores.find((c) => c.id === a.corretor_id);
+    return `<tr>
+      <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
+      <td>${esc(fmtDateTime(a.data_hora))}</td>
+      <td>${esc(a.observacao || '—')}</td>
+      <td><div class="row-actions">
+        <button class="icon-btn edit" onclick="responderAgendaGerente('${a.id}','aceito')">Aceitar</button>
+        <button class="icon-btn del" onclick="responderAgendaGerente('${a.id}','recusado')">Recusar</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ag-pendentes-vazio').style.display = pendentes.length ? 'none' : 'block';
+
+  document.querySelector('#ag-confirmados-tabela tbody').innerHTML = confirmados.map((a) => {
+    const corretor = db.corretores.find((c) => c.id === a.corretor_id);
+    return `<tr>
+      <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
+      <td>${esc(fmtDateTime(a.data_hora))}</td>
+      <td>${esc(a.observacao || '—')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ag-confirmados-vazio').style.display = confirmados.length ? 'none' : 'block';
+}
+
+async function responderAgendaGerente(id, novoStatus) {
+  const { error } = await sb.from('agenda_gerente').update({ status: novoStatus }).eq('id', id);
+  if (error) return toast(error.message);
+  await carregarAgendaGerente();
+  renderAgendaGerente();
+  toast(novoStatus === 'aceito' ? 'Aceito!' : 'Recusado.');
 }
 
 // ---------------- Exportar CSV ----------------
