@@ -1094,6 +1094,8 @@ let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.remove('hidden');
+  t.style.zIndex = '99999';
+  t.style.position = 'fixed';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2600);
 }
