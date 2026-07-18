@@ -908,8 +908,9 @@ async function carregarAgendaGerente() {
 }
 
 function renderAgendaGerente() {
-  const pendentes = db.agendaGerente.filter((a) => a.status === 'pendente');
-  const confirmados = db.agendaGerente.filter((a) => a.status === 'aceito');
+  const meus = (ME && ME.role === 'diretoria') ? db.agendaGerente : db.agendaGerente.filter((a) => a.gerente_id === UID);
+  const pendentes = meus.filter((a) => a.status === 'pendente');
+  const confirmados = meus.filter((a) => a.status === 'aceito');
 
   document.querySelector('#ag-pendentes-tabela tbody').innerHTML = pendentes.map((a) => {
     const corretor = db.corretores.find((c) => c.id === a.corretor_id);
