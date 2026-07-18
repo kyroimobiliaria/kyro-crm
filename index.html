@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="styles.css" />
   <style>
     #menu-toggle { display: none; }
+    #sidebar-overlay { display: none; }
     @media (max-width: 768px) {
       #menu-toggle {
         display: flex; align-items: center; justify-content: center;
@@ -29,7 +30,7 @@
       .sidebar.aberta { transform: translateX(0); }
       #content { padding-top: 60px !important; }
       #sidebar-overlay {
-        display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         background: rgba(0,0,0,0.5); z-index: 9998;
       }
       #sidebar-overlay.aberta { display: block; }
