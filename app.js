@@ -477,6 +477,7 @@ function openLeadDetail(id) {
         <label>Gerente<select id="ag-gerente-select">${gerentesOptions || '<option value="">— nenhum gerente cadastrado —</option>'}</select></label>
         <label>Data e hora<input id="ag-data-hora" type="datetime-local" /></label>
       </div>
+      <div id="ag-horarios-ocupados" style="margin-top:6px"></div>
       <label>Observação<input id="ag-observacao" placeholder="ex: visita ao imóvel X" /></label>
       <button type="button" class="btn-gold" onclick="solicitarAgendaGerente('${l.id}')">Pedir acompanhamento</button>
     </div>
@@ -486,6 +487,26 @@ function openLeadDetail(id) {
     </div>`;
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal').classList.remove('hidden');
+
+  const selGerente = document.getElementById('ag-gerente-select');
+  carregarHorariosOcupados(selGerente.value);
+  selGerente.addEventListener('change', (e) => carregarHorariosOcupados(e.target.value));
+}
+async function carregarHorariosOcupados(gerenteId) {
+  const wrap = document.getElementById('ag-horarios-ocupados');
+  if (!wrap) return;
+  if (!gerenteId) { wrap.innerHTML = ''; return; }
+  const { data, error } = await sb.from('agenda_gerente')
+    .select('data_hora')
+    .eq('gerente_id', gerenteId)
+    .in('status', ['pendente', 'aceito'])
+    .order('data_hora', { ascending: true });
+  if (error || !data || data.length === 0) {
+    wrap.innerHTML = '<span class="muted" style="font-size:11px">Nenhum horário ocupado com esse gerente ainda.</span>';
+    return;
+  }
+  wrap.innerHTML = '<span class="muted" style="font-size:11px">Horários já ocupados com esse gerente: ' +
+    data.map((d) => esc(fmtDateTime(d.data_hora))).join(', ') + '</span>';
 }
 async function solicitarAgendaGerente(leadId) {
   const gerenteId = v('ag-gerente-select');
@@ -502,7 +523,7 @@ async function solicitarAgendaGerente(leadId) {
   });
 
   if (error) {
-    if (error.code === '23505') return toast('Esse horário já está ocupado com esse gerente. Escolhe outro.');
+    if (error.code === '23505') return toast('Esse horário já está ocupado com esse gerente. Escolhe outro horário (veja os ocupados acima do campo de observação).');
     return toast(error.message);
   }
   toast('Pedido enviado ao gerente!');
@@ -910,6 +931,7 @@ function renderAgendaGerente() {
       <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
       <td>${esc(fmtDateTime(a.data_hora))}</td>
       <td>${esc(a.observacao || '—')}</td>
+      <td><button class="icon-btn del" onclick="responderAgendaGerente('${a.id}','cancelado')">Cancelar</button></td>
     </tr>`;
   }).join('');
   document.getElementById('ag-confirmados-vazio').style.display = confirmados.length ? 'none' : 'block';
@@ -920,7 +942,7 @@ async function responderAgendaGerente(id, novoStatus) {
   if (error) return toast(error.message);
   await carregarAgendaGerente();
   renderAgendaGerente();
-  toast(novoStatus === 'aceito' ? 'Aceito!' : 'Recusado.');
+  toast(novoStatus === 'aceito' ? 'Aceito!' : novoStatus === 'cancelado' ? 'Compromisso cancelado.' : 'Recusado.');
 }
 
 // ---------------- Exportar CSV ----------------
