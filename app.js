@@ -96,6 +96,21 @@ document.getElementById('auth-entrar').addEventListener('click', async () => {
 });
 document.getElementById('logout').addEventListener('click', () => sb.auth.signOut());
 
+// ---------------- Menu mobile ----------------
+document.getElementById('menu-toggle').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.toggle('aberta');
+  document.getElementById('sidebar-overlay').classList.toggle('aberta');
+});
+document.getElementById('sidebar-overlay').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.remove('aberta');
+  document.getElementById('sidebar-overlay').classList.remove('aberta');
+});
+// fecha o menu sozinho ao escolher uma tela, no celular
+document.getElementById('nav').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.remove('aberta');
+  document.getElementById('sidebar-overlay').classList.remove('aberta');
+});
+
 // ---------------- Navegação ----------------
 function buildNav() {
   const nav = document.getElementById('nav');
