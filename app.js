@@ -824,6 +824,7 @@ roletaForm.addEventListener('submit', async (e) => {
         telefone: v('roleta-telefone').trim(),
         origem: v('roleta-origem'),
         origem_descricao: v('roleta-origem') === 'outros' ? v('roleta-origem-descricao').trim() : null,
+        anotacoes: v('roleta-descricao').trim(),
         atribuido_por: UID,
         status: 'Novo',
         temperatura: 'morno',
