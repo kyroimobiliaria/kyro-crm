@@ -96,6 +96,20 @@ document.getElementById('auth-entrar').addEventListener('click', async () => {
 });
 document.getElementById('logout').addEventListener('click', () => sb.auth.signOut());
 
+// ---------------- Tema claro / escuro ----------------
+function atualizarBotaoTema() {
+  const btn = document.getElementById('tema-toggle');
+  const claro = document.body.classList.contains('tema-claro');
+  btn.textContent = claro ? '🌙 Modo escuro' : '☀️ Modo claro';
+}
+document.getElementById('tema-toggle').addEventListener('click', () => {
+  document.body.classList.toggle('tema-claro');
+  localStorage.setItem('kyro-tema', document.body.classList.contains('tema-claro') ? 'claro' : 'escuro');
+  atualizarBotaoTema();
+});
+if (localStorage.getItem('kyro-tema') === 'claro') document.body.classList.add('tema-claro');
+atualizarBotaoTema();
+
 // ---------------- Menu mobile ----------------
 document.getElementById('menu-toggle').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.toggle('aberta');
