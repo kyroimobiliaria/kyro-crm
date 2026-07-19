@@ -150,7 +150,7 @@ async function showView(name) {
   else if (name === 'roleta') { await Promise.all([carregarLeads(), carregarCorretores()]); popularSelectRoletaCorretor(); renderRoleta(); }
   else if (name === 'agendagerente') { await Promise.all([carregarAgendaGerente(), carregarCorretores()]); renderAgendaGerente(); }
   else if (name === 'corretores') { await carregarCorretores(); renderCorretores(); }
-  else if (name === 'dashboard') { await carregarTudo(); renderDashboard(); }
+  else if (name === 'dashboard') { await carregarTudo(); await renderDashboard(); }
 }
 
 // ---------------- Carregamentos ----------------
@@ -1072,13 +1072,25 @@ function renderFunil() {
 }
 
 // ============================ DASHBOARD ============================
-function renderDashboard() {
+function calcularInicioPeriodo(periodo) {
+  const agora = new Date();
+  if (periodo === 'semana') {
+    const dow = (agora.getDay() + 6) % 7; // 0 = segunda
+    const seg = new Date(agora); seg.setDate(agora.getDate() - dow); seg.setHours(0, 0, 0, 0);
+    return seg;
+  }
+  if (periodo === 'mes') return new Date(agora.getFullYear(), agora.getMonth(), 1);
+  if (periodo === 'trimestre') return new Date(agora.getFullYear(), Math.floor(agora.getMonth() / 3) * 3, 1);
+  return null;
+}
+
+async function renderDashboard() {
   const L = db.leads;
   const quente = L.filter((l) => l.temperatura === 'quente').length;
   const morno = L.filter((l) => l.temperatura === 'morno').length;
   const frio = L.filter((l) => l.temperatura === 'frio').length;
   const agPendentes = L.filter((l) => l.agendamento && new Date(l.agendamento) <= new Date()).length;
-  const vendas = L.filter((l) => l.status === 'Fechado').length;
+  const vendasTotal = L.filter((l) => l.status === 'Fechado').length;
   const imoveisDisp = db.imoveis.filter((i) => i.status === 'Disponível').length;
 
   const cards = [
@@ -1088,7 +1100,7 @@ function renderDashboard() {
     { num: frio, lbl: '🧊 Frios' },
     { num: db.atividades.filter((a) => a.categoria === 'ligacao').reduce((s, a) => s + a.quantidade, 0), lbl: 'Ligações registradas' },
     { num: agPendentes, lbl: 'Agendamentos pendentes' },
-    { num: vendas, lbl: 'Vendas fechadas' },
+    { num: vendasTotal, lbl: 'Vendas fechadas' },
     { num: imoveisDisp, lbl: 'Imóveis disponíveis' },
   ];
   document.getElementById('stats').innerHTML = cards.map((c) => `<div class="stat"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('');
@@ -1098,22 +1110,56 @@ function renderDashboard() {
     ? db.corretores.filter((c) => c.equipe === ME.equipe)
     : db.corretores;
 
+  const periodo = document.getElementById('dash-periodo') ? v('dash-periodo') : 'tudo';
+  const ordenar = document.getElementById('dash-ordenar') ? v('dash-ordenar') : 'nome';
+  const inicioPeriodo = calcularInicioPeriodo(periodo);
+
+  // com período ativo, ligações e vendas passam a contar os eventos que aconteceram na janela,
+  // não o total acumulado desde sempre
+  let eventosPeriodo = null;
+  if (inicioPeriodo) {
+    const { data, error } = await sb.from('eventos').select('tipo, corretor_id, created_at').gte('created_at', inicioPeriodo.toISOString());
+    if (error) toast(error.message);
+    eventosPeriodo = data || [];
+  }
+
   const porCorretor = corretoresVisiveis.map((c) => {
-    const meus = L.filter((l) => l.corretor_id === c.id);
-    const vendas = meus.filter((l) => l.status === 'Fechado').length;
-    const conversao = meus.length > 0 ? Math.round((vendas / meus.length) * 100) : null;
+    const meusTodos = L.filter((l) => l.corretor_id === c.id);
+    const meusPeriodo = inicioPeriodo ? meusTodos.filter((l) => new Date(l.criado_em) >= inicioPeriodo) : meusTodos;
+
+    let ligacoes, vendas;
+    if (eventosPeriodo) {
+      const doCorretor = eventosPeriodo.filter((e) => e.corretor_id === c.id);
+      ligacoes = doCorretor.filter((e) => e.tipo === 'ligacao').length;
+      vendas = doCorretor.filter((e) => e.tipo === 'venda').length;
+    } else {
+      ligacoes = db.atividades.filter((a) => a.categoria === 'ligacao' && a.corretor_id === c.id).reduce((s, a) => s + a.quantidade, 0);
+      vendas = meusTodos.filter((l) => l.status === 'Fechado').length;
+    }
+
+    const conversao = meusPeriodo.length > 0 ? Math.round((vendas / meusPeriodo.length) * 100) : null;
+
     return {
       id: c.id,
       nome: c.nome || c.email,
-      leads: meus.length,
-      ligacoes: db.atividades.filter((a) => a.categoria === 'ligacao' && a.corretor_id === c.id).reduce((s, a) => s + a.quantidade, 0),
-      agendamentos: meus.filter((l) => l.agendamento).length,
-      mornos: meus.filter((l) => l.temperatura === 'morno' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
-      quentes: meus.filter((l) => l.temperatura === 'quente' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
+      leads: meusPeriodo.length,
+      ligacoes,
+      agendamentos: meusTodos.filter((l) => l.agendamento).length,
+      mornos: meusTodos.filter((l) => l.temperatura === 'morno' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
+      quentes: meusTodos.filter((l) => l.temperatura === 'quente' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
       vendas,
       conversao,
     };
   });
+
+  const comparadores = {
+    nome: (a, b) => a.nome.localeCompare(b.nome),
+    conversao: (a, b) => (b.conversao ?? -1) - (a.conversao ?? -1),
+    vendas: (a, b) => b.vendas - a.vendas,
+    leads: (a, b) => b.leads - a.leads,
+  };
+  porCorretor.sort(comparadores[ordenar] || comparadores.nome);
+
   document.querySelector('#dash-corretores tbody').innerHTML = porCorretor.map((c) => {
     let corConversao = 'var(--muted)';
     if (c.leads >= 10 && c.vendas === 0) corConversao = 'var(--red)';
@@ -1139,6 +1185,8 @@ function renderDashboard() {
 
   renderFunil();
 }
+document.getElementById('dash-periodo').addEventListener('change', renderDashboard);
+document.getElementById('dash-ordenar').addEventListener('change', renderDashboard);
 
 async function openCorretorDetail(corretorId) {
   const corretor = db.corretores.find((c) => c.id === corretorId);
