@@ -1118,6 +1118,16 @@ function renderDashboard() {
       <td>${c.mornos}</td><td>🔥 ${c.quentes}</td>
       <td style="color:var(--gold);font-weight:700">${c.vendas}</td>
     </tr>`).join('');
+
+  const idsVisiveis = new Set(corretoresVisiveis.map((c) => c.id));
+  const vgvTotal = L.filter((l) => idsVisiveis.has(l.corretor_id) && (l.temperatura === 'morno' || l.temperatura === 'quente') && l.status !== 'Fechado' && l.status !== 'Perdido')
+    .reduce((s, l) => s + (Number(l.valor_imovel) || 0), 0);
+  document.querySelector('#dash-corretores tfoot').innerHTML = `
+    <tr>
+      <td colspan="4" style="text-align:right;font-weight:700">VGV em negociação (Morno + Quente):</td>
+      <td colspan="3" style="font-weight:700;color:var(--gold)">${money(vgvTotal)}</td>
+    </tr>`;
+
   renderFunil();
 }
 
@@ -1127,6 +1137,8 @@ function openCorretorDetail(corretorId) {
   const leadsCorretor = db.leads.filter((l) => l.corretor_id === corretorId && l.status !== 'Fechado' && l.status !== 'Perdido');
   const quentes = leadsCorretor.filter((l) => l.temperatura === 'quente');
   const mornos = leadsCorretor.filter((l) => l.temperatura === 'morno');
+  const totalQuente = quentes.reduce((s, l) => s + (Number(l.valor_imovel) || 0), 0);
+  const totalMorno = mornos.reduce((s, l) => s + (Number(l.valor_imovel) || 0), 0);
 
   const linhaLead = (l) => `<tr>
     <td><span class="lead-link" onclick="openLeadDetail('${l.id}');fecharModal()">${esc(l.nome)}</span></td>
@@ -1142,9 +1154,9 @@ function openCorretorDetail(corretorId) {
   const html = `
     <h2 style="color:var(--gold);margin-top:0">${esc(corretor.nome || corretor.email)}</h2>
     <p class="muted" style="margin-top:-8px">Negociações em andamento, separadas por temperatura</p>
-    <h3 style="margin:16px 0 8px">🔥 Quente (${quentes.length})</h3>
+    <h3 style="margin:16px 0 8px">🔥 Quente (${quentes.length}) — ${money(totalQuente)}</h3>
     ${tabela(quentes, 'Nenhum lead quente no momento.')}
-    <h3 style="margin:16px 0 8px">Morno (${mornos.length})</h3>
+    <h3 style="margin:16px 0 8px">Morno (${mornos.length}) — ${money(totalMorno)}</h3>
     ${tabela(mornos, 'Nenhum lead morno no momento.')}
     <div class="actions" style="margin-top:14px">
       <button class="btn-ghost" onclick="fecharModal()">Fechar</button>
