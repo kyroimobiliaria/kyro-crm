@@ -1093,20 +1093,64 @@ function renderDashboard() {
   ];
   document.getElementById('stats').innerHTML = cards.map((c) => `<div class="stat"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('');
 
-  // desempenho por corretor
-  const porCorretor = db.corretores.map((c) => {
+  // desempenho por corretor (gerente só vê a própria equipe, diretoria vê tudo)
+  const corretoresVisiveis = (ME && ME.role === 'gerente' && ME.equipe)
+    ? db.corretores.filter((c) => c.equipe === ME.equipe)
+    : db.corretores;
+
+  const porCorretor = corretoresVisiveis.map((c) => {
     const meus = L.filter((l) => l.corretor_id === c.id);
     return {
+      id: c.id,
       nome: c.nome || c.email,
       leads: meus.length,
       ligacoes: db.atividades.filter((a) => a.categoria === 'ligacao' && a.corretor_id === c.id).reduce((s, a) => s + a.quantidade, 0),
       agendamentos: meus.filter((l) => l.agendamento).length,
+      mornos: meus.filter((l) => l.temperatura === 'morno' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
+      quentes: meus.filter((l) => l.temperatura === 'quente' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
       vendas: meus.filter((l) => l.status === 'Fechado').length,
     };
   });
   document.querySelector('#dash-corretores tbody').innerHTML = porCorretor.map((c) => `
-    <tr><td>${esc(c.nome)}</td><td>${c.leads}</td><td>${c.ligacoes}</td><td>${c.agendamentos}</td><td style="color:var(--gold);font-weight:700">${c.vendas}</td></tr>`).join('');
+    <tr>
+      <td><span class="lead-link" onclick="openCorretorDetail('${c.id}')">${esc(c.nome)}</span></td>
+      <td>${c.leads}</td><td>${c.ligacoes}</td><td>${c.agendamentos}</td>
+      <td>${c.mornos}</td><td>🔥 ${c.quentes}</td>
+      <td style="color:var(--gold);font-weight:700">${c.vendas}</td>
+    </tr>`).join('');
   renderFunil();
+}
+
+function openCorretorDetail(corretorId) {
+  const corretor = db.corretores.find((c) => c.id === corretorId);
+  if (!corretor) return;
+  const leadsCorretor = db.leads.filter((l) => l.corretor_id === corretorId && l.status !== 'Fechado' && l.status !== 'Perdido');
+  const quentes = leadsCorretor.filter((l) => l.temperatura === 'quente');
+  const mornos = leadsCorretor.filter((l) => l.temperatura === 'morno');
+
+  const linhaLead = (l) => `<tr>
+    <td><span class="lead-link" onclick="openLeadDetail('${l.id}');fecharModal()">${esc(l.nome)}</span></td>
+    <td>${esc(l.status || 'Novo')}</td><td>${money(l.valor_imovel)}</td><td>${esc(l.nicho || '—')}</td>
+  </tr>`;
+
+  const tabela = (lista, vazio) => `
+    <div class="table-wrap" style="max-height:220px">
+      <table><thead><tr><th>Cliente</th><th>Status</th><th>Valor</th><th>Nicho</th></tr></thead>
+      <tbody>${lista.length ? lista.map(linhaLead).join('') : `<tr><td colspan="4" class="muted">${vazio}</td></tr>`}</tbody></table>
+    </div>`;
+
+  const html = `
+    <h2 style="color:var(--gold);margin-top:0">${esc(corretor.nome || corretor.email)}</h2>
+    <p class="muted" style="margin-top:-8px">Negociações em andamento, separadas por temperatura</p>
+    <h3 style="margin:16px 0 8px">🔥 Quente (${quentes.length})</h3>
+    ${tabela(quentes, 'Nenhum lead quente no momento.')}
+    <h3 style="margin:16px 0 8px">Morno (${mornos.length})</h3>
+    ${tabela(mornos, 'Nenhum lead morno no momento.')}
+    <div class="actions" style="margin-top:14px">
+      <button class="btn-ghost" onclick="fecharModal()">Fechar</button>
+    </div>`;
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal').classList.remove('hidden');
 }
 
 // ---------------- Utilitários ----------------
