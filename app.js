@@ -1100,6 +1100,8 @@ function renderDashboard() {
 
   const porCorretor = corretoresVisiveis.map((c) => {
     const meus = L.filter((l) => l.corretor_id === c.id);
+    const vendas = meus.filter((l) => l.status === 'Fechado').length;
+    const conversao = meus.length > 0 ? Math.round((vendas / meus.length) * 100) : null;
     return {
       id: c.id,
       nome: c.nome || c.email,
@@ -1108,16 +1110,23 @@ function renderDashboard() {
       agendamentos: meus.filter((l) => l.agendamento).length,
       mornos: meus.filter((l) => l.temperatura === 'morno' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
       quentes: meus.filter((l) => l.temperatura === 'quente' && l.status !== 'Fechado' && l.status !== 'Perdido').length,
-      vendas: meus.filter((l) => l.status === 'Fechado').length,
+      vendas,
+      conversao,
     };
   });
-  document.querySelector('#dash-corretores tbody').innerHTML = porCorretor.map((c) => `
-    <tr>
+  document.querySelector('#dash-corretores tbody').innerHTML = porCorretor.map((c) => {
+    let corConversao = 'var(--muted)';
+    if (c.leads >= 10 && c.vendas === 0) corConversao = 'var(--red)';
+    else if (c.vendas > 0) corConversao = 'var(--gold)';
+    const textoConversao = c.conversao === null ? '—' : `${c.conversao}%`;
+    return `<tr>
       <td><span class="lead-link" onclick="openCorretorDetail('${c.id}')">${esc(c.nome)}</span></td>
       <td>${c.leads}</td><td>${c.ligacoes}</td><td>${c.agendamentos}</td>
       <td>${c.mornos}</td><td>🔥 ${c.quentes}</td>
       <td style="color:var(--gold);font-weight:700">${c.vendas}</td>
-    </tr>`).join('');
+      <td style="color:${corConversao};font-weight:700">${textoConversao}</td>
+    </tr>`;
+  }).join('');
 
   const idsVisiveis = new Set(corretoresVisiveis.map((c) => c.id));
   const vgvTotal = L.filter((l) => idsVisiveis.has(l.corretor_id) && (l.temperatura === 'morno' || l.temperatura === 'quente') && l.status !== 'Fechado' && l.status !== 'Perdido')
@@ -1125,30 +1134,56 @@ function renderDashboard() {
   document.querySelector('#dash-corretores tfoot').innerHTML = `
     <tr>
       <td colspan="4" style="text-align:right;font-weight:700">VGV em negociação (Morno + Quente):</td>
-      <td colspan="3" style="font-weight:700;color:var(--gold)">${money(vgvTotal)}</td>
+      <td colspan="4" style="font-weight:700;color:var(--gold)">${money(vgvTotal)}</td>
     </tr>`;
 
   renderFunil();
 }
 
-function openCorretorDetail(corretorId) {
+async function openCorretorDetail(corretorId) {
   const corretor = db.corretores.find((c) => c.id === corretorId);
   if (!corretor) return;
+
+  document.getElementById('modal-content').innerHTML = '<p class="muted">Carregando...</p>';
+  document.getElementById('modal').classList.remove('hidden');
+
   const leadsCorretor = db.leads.filter((l) => l.corretor_id === corretorId && l.status !== 'Fechado' && l.status !== 'Perdido');
   const quentes = leadsCorretor.filter((l) => l.temperatura === 'quente');
   const mornos = leadsCorretor.filter((l) => l.temperatura === 'morno');
   const totalQuente = quentes.reduce((s, l) => s + (Number(l.valor_imovel) || 0), 0);
   const totalMorno = mornos.reduce((s, l) => s + (Number(l.valor_imovel) || 0), 0);
 
+  // busca o último evento de cada lead, pra saber há quanto tempo está sem contato
+  const idsLeads = leadsCorretor.map((l) => l.id);
+  const ultimoContato = {};
+  if (idsLeads.length) {
+    const { data: eventosLeads } = await sb.from('eventos')
+      .select('lead_id, created_at')
+      .in('lead_id', idsLeads)
+      .order('created_at', { ascending: false });
+    (eventosLeads || []).forEach((e) => {
+      if (e.lead_id && !ultimoContato[e.lead_id]) ultimoContato[e.lead_id] = e.created_at;
+    });
+  }
+
+  function statusParado(l) {
+    const ultimo = ultimoContato[l.id] || l.criado_em;
+    const dias = Math.floor((Date.now() - new Date(ultimo).getTime()) / 86400000);
+    const texto = dias <= 0 ? 'hoje' : dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
+    const cor = dias >= 5 ? 'color:var(--red);font-weight:600' : '';
+    return `<span style="${cor}">${texto}</span>`;
+  }
+
   const linhaLead = (l) => `<tr>
     <td><span class="lead-link" onclick="openLeadDetail('${l.id}');fecharModal()">${esc(l.nome)}</span></td>
     <td>${esc(l.status || 'Novo')}</td><td>${money(l.valor_imovel)}</td><td>${esc(l.nicho || '—')}</td>
+    <td>${statusParado(l)}</td>
   </tr>`;
 
   const tabela = (lista, vazio) => `
     <div class="table-wrap" style="max-height:220px">
-      <table><thead><tr><th>Cliente</th><th>Status</th><th>Valor</th><th>Nicho</th></tr></thead>
-      <tbody>${lista.length ? lista.map(linhaLead).join('') : `<tr><td colspan="4" class="muted">${vazio}</td></tr>`}</tbody></table>
+      <table><thead><tr><th>Cliente</th><th>Status</th><th>Valor</th><th>Nicho</th><th>Último contato</th></tr></thead>
+      <tbody>${lista.length ? lista.map(linhaLead).join('') : `<tr><td colspan="5" class="muted">${vazio}</td></tr>`}</tbody></table>
     </div>`;
 
   const html = `
