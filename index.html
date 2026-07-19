@@ -457,7 +457,23 @@
         <div class="stats" id="stats"></div>
         <div class="card" id="funil-card"></div>
         <div class="card" id="dash-corretores-wrap">
-          <h2>Desempenho por corretor</h2>
+          <div class="list-head">
+            <h2>Desempenho por corretor</h2>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <select id="dash-periodo">
+                <option value="tudo">Todo período</option>
+                <option value="semana">Essa semana</option>
+                <option value="mes">Este mês</option>
+                <option value="trimestre">Este trimestre</option>
+              </select>
+              <select id="dash-ordenar">
+                <option value="nome">Ordenar: Nome</option>
+                <option value="conversao">Ordenar: Conversão</option>
+                <option value="vendas">Ordenar: Vendas</option>
+                <option value="leads">Ordenar: Leads</option>
+              </select>
+            </div>
+          </div>
           <div class="table-wrap">
             <table id="dash-corretores">
               <thead><tr><th>Corretor</th><th>Leads</th><th>Ligações</th><th>Agendamentos</th><th>Morno</th><th>Quente</th><th>Vendas (Fechado)</th><th>Conversão</th></tr></thead>
