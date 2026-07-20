@@ -33,7 +33,10 @@ module.exports = async function handler(req, res) {
   }
 
   const lead = payload.record;
+  console.log("[webhook-novo-lead] Lead recebido:", JSON.stringify(lead));
+
   if (!lead.corretor_id) {
+    console.log("[webhook-novo-lead] Lead sem corretor_id, ignorando.");
     return res.status(200).json({ ok: true, motivo: "Lead sem corretor responsável ainda." });
   }
 
@@ -50,9 +53,11 @@ module.exports = async function handler(req, res) {
     },
   );
   const profiles = await profileRes.json();
+  console.log("[webhook-novo-lead] Resposta do Supabase (profiles):", profileRes.status, JSON.stringify(profiles));
   const corretor = Array.isArray(profiles) ? profiles[0] : null;
 
   if (!corretor || !corretor.whatsapp) {
+    console.log("[webhook-novo-lead] Corretor sem whatsapp cadastrado:", JSON.stringify(corretor));
     return res.status(200).json({ ok: true, motivo: "Corretor sem WhatsApp cadastrado no perfil." });
   }
 
@@ -63,6 +68,7 @@ module.exports = async function handler(req, res) {
     languageCode: "pt_BR",
     bodyParams: [lead.nome || "Sem nome", lead.tipo || lead.interesse || "-", formatarAgora()],
   });
+  console.log("[webhook-novo-lead] Resultado do envio via Meta:", JSON.stringify(resultado));
 
   return res.status(200).json({ ok: resultado.ok, error: resultado.error });
 };
@@ -111,9 +117,11 @@ async function enviarTemplateWhatsApp({ to, templateName, languageCode = "pt_BR"
       body: JSON.stringify(body),
     });
     const data = await apiRes.json();
+    console.log("[webhook-novo-lead] Resposta bruta da Meta:", apiRes.status, JSON.stringify(data));
     if (!apiRes.ok) return { ok: false, error: data?.error?.message || `Erro HTTP ${apiRes.status}` };
     return { ok: true };
   } catch (err) {
+    console.log("[webhook-novo-lead] Erro ao chamar a Meta:", err instanceof Error ? err.message : err);
     return { ok: false, error: err instanceof Error ? err.message : "Erro desconhecido" };
   }
 }
