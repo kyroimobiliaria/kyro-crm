@@ -305,9 +305,12 @@ async function marcarLeadAtendido(id) {
 function renderLeads() {
   const t = v('lead-busca').toLowerCase();
   const f = db.leads.filter((l) => [l.nome, l.telefone, l.nicho, l.bairro, l.etiquetas].join(' ').toLowerCase().includes(t));
-  document.querySelector('#lead-tabela tbody').innerHTML = f.map((l) => `
+  document.querySelector('#lead-tabela tbody').innerHTML = f.map((l) => {
+    const corretor = db.corretores.find((c) => c.id === l.corretor_id);
+    return `
     <tr>
       <td><span class="lead-link" onclick="openLeadDetail('${l.id}')">${esc(l.nome)}</span>${l.roleta_status === 'aguardando_atendimento' ? '<div><span class="tag" style="background:#e67e22;color:#fff">⏳ Aguardando atendimento</span></div>' : ''}<div style="font-size:11px;margin-top:2px">${renderTags(l.etiquetas)}</div></td>
+      <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
       <td><span class="tag t-${l.temperatura}">${tempLabel(l.temperatura)}</span></td>
       <td>${esc(l.nicho || '—')}</td>
       <td>${esc(l.status || 'Novo')}</td>
@@ -316,7 +319,8 @@ function renderLeads() {
         <button class="icon-btn edit" onclick="editarLead('${l.id}')">Editar</button>
         <button class="icon-btn del" onclick="excluirLead('${l.id}')">Excluir</button>
       </div></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   document.getElementById('lead-vazio').style.display = f.length ? 'none' : 'block';
 }
 // ============================ AGENDA ============================
