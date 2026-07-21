@@ -15,7 +15,7 @@ let UID = null;    // id do usuário (ou 'demo' no modo demo)
 const isDemo = () => CONFIG.DEMO_MODE;
 
 // caches
-const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [], imoveisFotos: [], agendaGerente: [] };
+const db = { leads: [], imoveis: [], atividades: [], corretores: [], atividadesMes: [], imoveisFotos: [], agendaGerente: [], lixeira: [] };
 
 // controla se o Acomp está mostrando a semana ou o mês
 let acompModoMensal = false;
@@ -40,10 +40,11 @@ const ROLE_NAV = {
   imoveis:    ['secretaria', 'corretor', 'gerente', 'diretoria'],
   roleta:     ['gerente', 'diretoria'],
   agendagerente: ['gerente', 'diretoria'],
+  lixeira:    ['corretor', 'gerente', 'diretoria', 'secretaria'],
   corretores: ['gerente', 'diretoria'],
   dashboard:  ['gerente', 'diretoria', 'secretaria'],
 };
-const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', roleta: 'Roleta de Leads', agendagerente: 'Agenda do Gerente', corretores: 'Corretores', dashboard: 'Dashboard' };
+const NAV_LABEL = { leads: 'Leads', agenda: 'Agenda', acomp: 'Acomp. Ligações', imoveis: 'Imóveis', roleta: 'Roleta de Leads', agendagerente: 'Agenda do Gerente', lixeira: 'Lixeira', corretores: 'Corretores', dashboard: 'Dashboard' };
 
 // ---------------- Auth ----------------
 async function init() {
@@ -149,13 +150,14 @@ async function showView(name) {
   else if (name === 'imoveis') { await Promise.all([carregarImoveis(), carregarCorretores(), carregarImoveisFotos()]); popularSelectCaptador(); renderImoveis(); }
   else if (name === 'roleta') { await Promise.all([carregarLeads(), carregarCorretores()]); popularSelectRoletaCorretor(); renderRoleta(); }
   else if (name === 'agendagerente') { await Promise.all([carregarAgendaGerente(), carregarCorretores()]); renderAgendaGerente(); }
+  else if (name === 'lixeira') { await Promise.all([carregarLixeira(), carregarCorretores()]); renderLixeira(); }
   else if (name === 'corretores') { await carregarCorretores(); renderCorretores(); }
   else if (name === 'dashboard') { await carregarTudo(); await renderDashboard(); }
 }
 
 // ---------------- Carregamentos ----------------
 async function carregarLeads(all = false) {
-  let q = sb.from('leads').select('*').order('criado_em', { ascending: false });
+  let q = sb.from('leads').select('*').is('excluido_em', null).order('criado_em', { ascending: false });
   if (!all && ME && ME.role === 'corretor' && !isDemo()) q = q.eq('corretor_id', UID);
   const { data, error } = await q;
   if (error) return toast(error.message);
@@ -279,10 +281,11 @@ function editarLead(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 async function excluirLead(id) {
-  if (!confirm('Excluir este lead?')) return;
-  const { error } = await sb.from('leads').delete().eq('id', id);
+  if (!confirm('Mover este lead para a lixeira? Dá pra restaurar depois, na tela Lixeira.')) return;
+  const { error } = await sb.from('leads').update({ excluido_em: new Date().toISOString() }).eq('id', id);
   if (error) return toast(error.message);
   await carregarLeads(); renderLeads();
+  toast('Lead movido para a lixeira.');
 }
 function waLead(id) {
   const l = db.leads.find((x) => x.id === id); if (!l) return;
@@ -822,6 +825,49 @@ function openImovelDetail(id) {
     </div>`;
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal').classList.remove('hidden');
+}
+
+// ============================ LIXEIRA ============================
+async function carregarLixeira() {
+  let q = sb.from('leads').select('*').not('excluido_em', 'is', null).order('excluido_em', { ascending: false });
+  if (ME && ME.role === 'corretor' && !isDemo()) q = q.eq('corretor_id', UID);
+  const { data, error } = await q;
+  if (error) { toast(error.message); return; }
+  db.lixeira = data || [];
+}
+
+function renderLixeira() {
+  const podeExcluirDeVez = ME && ME.role === 'diretoria';
+  document.querySelector('#lixeira-tabela tbody').innerHTML = db.lixeira.map((l) => {
+    const corretor = db.corretores.find((c) => c.id === l.corretor_id);
+    return `<tr>
+      <td>${esc(l.nome)}</td>
+      <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
+      <td>${esc(fmtDateTime(l.excluido_em))}</td>
+      <td><div class="row-actions">
+        <button class="icon-btn edit" onclick="restaurarLead('${l.id}')">Restaurar</button>
+        ${podeExcluirDeVez ? `<button class="icon-btn del" onclick="excluirLeadDefinitivo('${l.id}')">Excluir definitivamente</button>` : ''}
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('lixeira-vazio').style.display = db.lixeira.length ? 'none' : 'block';
+}
+
+async function restaurarLead(id) {
+  const { error } = await sb.from('leads').update({ excluido_em: null }).eq('id', id);
+  if (error) return toast(error.message);
+  toast('Lead restaurado!');
+  await carregarLixeira();
+  renderLixeira();
+}
+
+async function excluirLeadDefinitivo(id) {
+  if (!confirm('Excluir DEFINITIVAMENTE este lead? Não tem como desfazer depois disso.')) return;
+  const { error } = await sb.from('leads').delete().eq('id', id);
+  if (error) return toast(error.message);
+  toast('Lead excluído definitivamente.');
+  await carregarLixeira();
+  renderLixeira();
 }
 
 // ============================ ROLETA DE LEADS ============================
