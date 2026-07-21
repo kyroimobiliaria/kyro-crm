@@ -145,7 +145,7 @@ async function showView(name) {
   document.querySelectorAll('.view').forEach((s) => s.classList.remove('active'));
   document.getElementById(name).classList.add('active');
   if (name === 'leads') { await Promise.all([carregarLeads(), carregarCorretores()]); renderLeads(); }
-  else if (name === 'agenda') { await carregarLeads(); renderAgenda(); }
+  else if (name === 'agenda') { await Promise.all([carregarLeads(), carregarCorretores()]); renderAgenda(); }
   else if (name === 'acomp') { await carregarAtividades(); vset('corretor-foco-nicho', (ME && ME.foco_nicho) || ''); renderAcomp(); }
   else if (name === 'imoveis') { await Promise.all([carregarImoveis(), carregarCorretores(), carregarImoveisFotos()]); popularSelectCaptador(); renderImoveis(); }
   else if (name === 'roleta') { await Promise.all([carregarLeads(), carregarCorretores()]); popularSelectRoletaCorretor(); renderRoleta(); }
@@ -337,17 +337,22 @@ function renderAgenda() {
     });
   }
 
-  document.querySelector('#agenda-tabela tbody').innerHTML = ags.map((l) => `
+  document.querySelector('#agenda-tabela tbody').innerHTML = ags.map((l) => {
+    const corretor = db.corretores.find((c) => c.id === l.corretor_id);
+    return `
     <tr>
       <td>${esc(fmtDateTime(l.agendamento))}</td>
       <td>${esc(l.nome)}</td>
+      <td>${esc(corretor ? (corretor.nome || corretor.email) : '—')}</td>
       <td>${l.telefone ? `${esc(l.telefone)} <a class="icon-btn wa" href="${waLink(l.telefone, l.nome)}" target="_blank">WhatsApp</a>` : '—'}</td>
       <td>${esc(l.agendamento_obs || '')}</td>
+      <td>${esc(fmtDateTime(l.criado_em))}</td>
       <td><div class="row-actions">
         <button class="icon-btn wa" onclick="waLead('${l.id}')">Ligar</button>
         <button class="icon-btn edit" onclick="editarLead('${l.id}')">Reagendar</button>
       </div></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
 }
 
