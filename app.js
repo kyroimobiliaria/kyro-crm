@@ -214,6 +214,10 @@ leadForm.addEventListener('submit', async (e) => {
     const leadAntigo = db.leads.find((l) => l.id === id);
     const statusAntigo = leadAntigo ? leadAntigo.status : null;
 
+    if (leadAntigo && leadAntigo.agendamento_concluido && leadAntigo.agendamento !== payload.agendamento) {
+      payload.agendamento_concluido = false;
+    }
+
     const { error } = await sb.from('leads').update(payload).eq('id', id);
     if (error) return toast(error.message);
 
@@ -326,7 +330,7 @@ function renderLeads() {
 // ============================ AGENDA ============================
 function renderAgenda() {
   const agora = new Date();
-  const ags = db.leads.filter((l) => l.agendamento).sort((a, b) => new Date(a.agendamento) - new Date(b.agendamento));
+  const ags = db.leads.filter((l) => l.agendamento && !l.agendamento_concluido).sort((a, b) => new Date(a.agendamento) - new Date(b.agendamento));
   const pendentes = ags.filter((l) => new Date(l.agendamento) <= agora);
   const alerta = document.getElementById('agenda-alerta');
   if (pendentes.length) {
@@ -354,10 +358,18 @@ function renderAgenda() {
       <td><div class="row-actions">
         <button class="icon-btn wa" onclick="waLead('${l.id}')">Ligar</button>
         <button class="icon-btn edit" onclick="editarLead('${l.id}')">Reagendar</button>
+        <button class="icon-btn del" onclick="concluirAgendamento('${l.id}')">Concluído</button>
       </div></td>
     </tr>`;
   }).join('');
   document.getElementById('agenda-vazio').style.display = ags.length ? 'none' : 'block';
+}
+async function concluirAgendamento(id) {
+  const { error } = await sb.from('leads').update({ agendamento_concluido: true }).eq('id', id);
+  if (error) return toast(error.message);
+  await carregarLeads();
+  renderAgenda();
+  toast('Agendamento marcado como concluído.');
 }
 
 // ============================ ACOMP (PRODUTIVIDADE DIÁRIA / MENSAL) ============================
