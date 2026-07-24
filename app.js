@@ -217,6 +217,10 @@ leadForm.addEventListener('submit', async (e) => {
     if (leadAntigo && leadAntigo.agendamento_concluido && leadAntigo.agendamento !== payload.agendamento) {
       payload.agendamento_concluido = false;
     }
+    // se a data de agendamento mudou, rearma o lembrete pra disparar na nova hora
+    if (leadAntigo && leadAntigo.agendamento !== payload.agendamento) {
+      payload.lembrete_enviado = false;
+    }
 
     const { error } = await sb.from('leads').update(payload).eq('id', id);
     if (error) return toast(error.message);
