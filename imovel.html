@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kyro Imobiliária</title>
+  <link rel="icon" href="icon-512.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div style="max-width:640px;margin:0 auto;padding:24px 16px">
+    <img src="banner-1.jpg" alt="Kyro" style="width:150px;display:block;margin:0 auto 20px" />
+    <div id="conteudo" class="card">
+      <p class="muted" style="text-align:center">Carregando imóvel...</p>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+    function esc(t) { return String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function money(v) { return 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR'); }
+
+    let galeria = [];
+    let indice = 0;
+    function trocarFoto(delta) {
+      if (!galeria.length) return;
+      indice = (indice + delta + galeria.length) % galeria.length;
+      document.getElementById('foto-grande').src = galeria[indice];
+    }
+    function irParaFoto(i) {
+      indice = i;
+      document.getElementById('foto-grande').src = galeria[indice];
+    }
+
+    async function carregar() {
+      const params = new URLSearchParams(location.search);
+      const id = params.get('id');
+      const el = document.getElementById('conteudo');
+      if (!id) { el.innerHTML = '<p>Link inválido.</p>'; return; }
+
+      const { data: imovel, error } = await sb.from('imoveis').select('*').eq('id', id).single();
+      if (error || !imovel) { el.innerHTML = '<p>Imóvel não encontrado ou indisponível.</p>'; return; }
+
+      const { data: fotos } = await sb.from('imoveis_fotos').select('*').eq('imovel_id', id).order('ordem', { ascending: true });
+      galeria = (fotos && fotos.length) ? fotos.map((f) => f.foto_url) : (imovel.foto_url ? [imovel.foto_url] : []);
+      indice = 0;
+
+      const miniaturas = (fotos && fotos.length > 1)
+        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${fotos.map((f, i) => `<img src="${esc(f.foto_url)}" onclick="irParaFoto(${i})" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer" alt="">`).join('')}</div>`
+        : '';
+
+      el.innerHTML = `
+        <h1 class="page-title" style="margin-top:0">${esc(imovel.titulo)}</h1>
+        ${galeria.length ? `
+        <div style="position:relative">
+          <img id="foto-grande" src="${esc(galeria[0])}" style="width:100%;max-height:320px;object-fit:cover;border-radius:8px;display:block" alt="">
+          ${galeria.length > 1 ? `
+            <button type="button" onclick="trocarFoto(-1)" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:20px;line-height:1">‹</button>
+            <button type="button" onclick="trocarFoto(1)" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:20px;line-height:1">›</button>
+          ` : ''}
+        </div>` : ''}
+        ${miniaturas}
+        <div class="row" style="margin-top:16px">
+          <div><div class="muted" style="font-size:11px">Tipo</div>${esc(imovel.tipo || '—')}</div>
+          <div><div class="muted" style="font-size:11px">Bairro</div>${esc(imovel.bairro || '—')}</div>
+        </div>
+        <div class="row">
+          <div><div class="muted" style="font-size:11px">Valor</div><b style="color:var(--gold)">${money(imovel.valor)}</b></div>
+          <div><div class="muted" style="font-size:11px">Status</div>${esc(imovel.status || '—')}</div>
+        </div>
+        ${imovel.permuta ? `<p><b>Aceita permuta:</b> ${esc(imovel.permuta_descricao || 'Sim')}</p>` : ''}
+        ${imovel.planta_url ? `<p><b>Planta:</b><br><img src="${esc(imovel.planta_url)}" style="max-width:260px;border-radius:8px;margin-top:6px" alt="planta"></p>` : ''}
+        <p style="margin-top:12px"><b>Descrição:</b><br>${esc(imovel.descricao || 'Consulte um de nossos corretores para mais detalhes.').replace(/\n/g, '<br>')}</p>
+      `;
+    }
+    carregar();
+  </script>
+</body>
+</html>
