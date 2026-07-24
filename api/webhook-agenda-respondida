@@ -1,0 +1,92 @@
+// Dispara quando o Gerente responde (UPDATE de status em "agenda_gerente").
+// Só notifica quando o status vira "aceito" ou "recusado" de verdade.
+
+module.exports = async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Método não permitido" });
+  }
+
+  const segredoRecebido = req.headers["x-webhook-secret"];
+  if (segredoRecebido !== process.env.WEBHOOK_SECRET) {
+    return res.status(401).json({ error: "Não autorizado" });
+  }
+
+  const payload = req.body;
+  if (!payload || payload.type !== "UPDATE" || payload.table !== "agenda_gerente") {
+    return res.status(200).json({ ok: true, ignorado: true });
+  }
+
+  const novo = payload.record;
+  const antigo = payload.old_record;
+  const statusMudou = !antigo || antigo.status !== novo.status;
+  if (!statusMudou || !["aceito", "recusado"].includes(novo.status)) {
+    return res.status(200).json({ ok: true, ignorado: true, motivo: "Sem mudança relevante de status." });
+  }
+
+  console.log("[webhook-agenda-respondida] Pedido atualizado:", JSON.stringify(novo));
+
+  const corretor = await fetchProfile(novo.corretor_id, "nome,whatsapp");
+  if (!corretor || !corretor.whatsapp) {
+    console.log("[webhook-agenda-respondida] Corretor sem WhatsApp cadastrado.");
+    return res.status(200).json({ ok: true, motivo: "Corretor sem WhatsApp cadastrado no perfil." });
+  }
+
+  const statusLabel = novo.status === "aceito" ? "ACEITO ✅" : "RECUSADO ❌";
+
+  const resultado = await enviarTemplateWhatsApp({
+    to: corretor.whatsapp,
+    templateName: "kyro_resposta_agenda",
+    languageCode: "pt_BR",
+    bodyParams: [statusLabel, formatarDataHora(novo.data_hora), novo.observacao || "-"],
+  });
+  console.log("[webhook-agenda-respondida] Resultado do envio via Meta:", JSON.stringify(resultado));
+
+  return res.status(200).json({ ok: resultado.ok, error: resultado.error });
+};
+
+async function fetchProfile(id, campos) {
+  if (!id) return null;
+  const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/profiles?id=eq.${id}&select=${campos}`, {
+    headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
+  });
+  const data = await res.json();
+  return Array.isArray(data) ? data[0] : null;
+}
+
+function formatarDataHora(iso) {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatPhoneForMeta(numero) {
+  const digits = String(numero).replace(/\D/g, "");
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+async function enviarTemplateWhatsApp({ to, templateName, languageCode = "pt_BR", bodyParams = [] }) {
+  const token = process.env.META_WHATSAPP_TOKEN;
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+  if (!token || !phoneNumberId) return { ok: false, error: "META_WHATSAPP_TOKEN ou META_PHONE_NUMBER_ID não configurados." };
+
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    to: formatPhoneForMeta(to),
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+      components: bodyParams.length ? [{ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) }] : undefined,
+    },
+  };
+
+  try {
+    const apiRes = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await apiRes.json();
+    console.log("[webhook-agenda-respondida] Resposta bruta da Meta:", apiRes.status, JSON.stringify(data));
+    if (!apiRes.ok) return { ok: false, error: data?.error?.message || `Erro HTTP ${apiRes.status}` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Erro desconhecido" };
+  }
+}
