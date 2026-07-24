@@ -1418,4 +1418,20 @@ function pedirNotificacoes() {
   }
 }
 
+// ---------------- Rótulos automáticos nas tabelas (pro modo cartão no celular) ----------------
+function aplicarRotulosTabelas() {
+  document.querySelectorAll('table').forEach((tabela) => {
+    const cabecalhos = Array.from(tabela.querySelectorAll('thead th')).map((th) => th.textContent.trim());
+    if (!cabecalhos.length) return;
+    tabela.querySelectorAll('tbody tr').forEach((tr) => {
+      Array.from(tr.children).forEach((td, i) => {
+        if (cabecalhos[i]) td.setAttribute('data-label', cabecalhos[i]);
+      });
+    });
+  });
+}
+// roda sempre que qualquer tabela é atualizada na tela
+const _observerTabelas = new MutationObserver(() => aplicarRotulosTabelas());
+_observerTabelas.observe(document.body, { childList: true, subtree: true });
+
 init();
