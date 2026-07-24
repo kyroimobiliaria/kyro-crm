@@ -122,6 +122,6 @@ async function enviarTemplateWhatsApp({ to, templateName, languageCode = "pt_BR"
     return { ok: true };
   } catch (err) {
     console.log("[webhook-novo-lead] Erro ao chamar a Meta:", err instanceof Error ? err.message : err);
-    return { ok: false, error: err instanceof Error ? err.message : "Erro desconhecido" };"fix: corrige nome do template WhatsApp", 
+    return { ok: false, error: err instanceof Error ? err.message : "Erro desconhecido" };
   }
 }
