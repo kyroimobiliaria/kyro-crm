@@ -739,11 +739,34 @@ function editarImovel(id) {
 function renderFotosExistentes(imovelId) {
   const wrap = document.getElementById('imovel-fotos-preview');
   const fotos = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).sort((a, b) => a.ordem - b.ordem);
-  wrap.innerHTML = fotos.map((f) => `
-    <div style="position:relative;display:inline-block">
-      <img src="${esc(f.foto_url)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px" alt="">
+  wrap.innerHTML = fotos.map((f, i) => `
+    <div style="position:relative;display:inline-block;text-align:center">
+      ${i === 0 ? '<span style="position:absolute;top:-6px;left:-6px;background:var(--gold);color:#111;font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;z-index:1">CAPA</span>' : ''}
+      <img src="${esc(f.foto_url)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;display:block" alt="">
       <button type="button" onclick="excluirFotoImovel('${f.id}')" style="position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer">✕</button>
+      <div style="display:flex;justify-content:center;gap:2px;margin-top:2px">
+        <button type="button" onclick="moverFotoImovel('${imovelId}','${f.id}',-1)" ${i === 0 ? 'disabled style="opacity:.3"' : ''} class="icon-btn" style="font-size:11px;padding:1px 6px">◀</button>
+        <button type="button" onclick="moverFotoImovel('${imovelId}','${f.id}',1)" ${i === fotos.length - 1 ? 'disabled style="opacity:.3"' : ''} class="icon-btn" style="font-size:11px;padding:1px 6px">▶</button>
+      </div>
     </div>`).join('');
+}
+async function moverFotoImovel(imovelId, fotoId, direcao) {
+  const fotos = db.imoveisFotos.filter((f) => f.imovel_id === imovelId).sort((a, b) => a.ordem - b.ordem);
+  const idx = fotos.findIndex((f) => f.id === fotoId);
+  const alvo = idx + direcao;
+  if (alvo < 0 || alvo >= fotos.length) return;
+
+  const [item] = fotos.splice(idx, 1);
+  fotos.splice(alvo, 0, item);
+
+  // reatribui a ordem de todas as fotos desse imóvel, evitando qualquer duplicidade
+  const resultados = await Promise.all(fotos.map((f, i) => sb.from('imoveis_fotos').update({ ordem: i }).eq('id', f.id)));
+  const comErro = resultados.find((r) => r.error);
+  if (comErro) { toast(comErro.error.message); return; }
+
+  await carregarImoveisFotos();
+  renderFotosExistentes(imovelId);
+  renderImoveis();
 }
 async function excluirFotoImovel(fotoId) {
   if (!confirm('Excluir esta foto?')) return;
