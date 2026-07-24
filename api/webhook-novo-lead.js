@@ -64,7 +64,7 @@ module.exports = async function handler(req, res) {
   // 4) Manda a mensagem usando o template aprovado.
   const resultado = await enviarTemplateWhatsApp({
     to: corretor.whatsapp,
-    templateName: "novo_lead_kyro",
+    templateName: "kyro_mensagens",
     languageCode: "pt_BR",
     bodyParams: [lead.nome || "Sem nome", lead.tipo || lead.interesse || "-", formatarAgora()],
   });
