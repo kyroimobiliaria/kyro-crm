@@ -829,13 +829,34 @@ function renderImoveis() {
   document.getElementById('imovel-vazio').style.display = f.length ? 'none' : 'block';
 }
 
+let galeriaFotos = [];
+let galeriaIndex = 0;
+function trocarFotoGaleria(delta) {
+  if (!galeriaFotos.length) return;
+  galeriaIndex = (galeriaIndex + delta + galeriaFotos.length) % galeriaFotos.length;
+  const img = document.getElementById('imovel-foto-grande');
+  if (img) img.src = galeriaFotos[galeriaIndex];
+}
+function irParaFotoGaleria(i) {
+  galeriaIndex = i;
+  const img = document.getElementById('imovel-foto-grande');
+  if (img) img.src = galeriaFotos[galeriaIndex];
+}
+function copiarLinkImovel(id) {
+  const url = `${location.origin}/imovel.html?id=${id}`;
+  navigator.clipboard.writeText(url).then(() => toast('Link copiado! Já pode colar no WhatsApp.'), () => toast(url));
+}
+
 function openImovelDetail(id) {
   const i = db.imoveis.find((x) => x.id === id); if (!i) return;
   const fotos = db.imoveisFotos.filter((f) => f.imovel_id === id).sort((a, b) => a.ordem - b.ordem);
   const capaUrl = fotos[0] ? fotos[0].foto_url : i.foto_url;
 
+  galeriaFotos = fotos.length ? fotos.map((f) => f.foto_url) : (capaUrl ? [capaUrl] : []);
+  galeriaIndex = 0;
+
   const galeria = fotos.length > 1
-    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${fotos.map((f) => `<img src="${esc(f.foto_url)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px" alt="">`).join('')}</div>`
+    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${fotos.map((f, idx) => `<img src="${esc(f.foto_url)}" onclick="irParaFotoGaleria(${idx})" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer" alt="">`).join('')}</div>`
     : '';
 
   const captacaoLabel = { exclusiva: 'Exclusiva', sem_exclusividade: 'Sem exclusividade', construtora: 'Construtora', parceria: 'Parceria' };
@@ -849,7 +870,14 @@ function openImovelDetail(id) {
 
   const html = `
     <h2 style="color:var(--gold);margin-top:0">${esc(i.titulo)}</h2>
-    ${capaUrl ? `<img src="${esc(capaUrl)}" style="width:100%;max-height:280px;object-fit:cover;border-radius:8px" alt="">` : ''}
+    ${capaUrl ? `
+    <div style="position:relative">
+      <img id="imovel-foto-grande" src="${esc(capaUrl)}" style="width:100%;max-height:280px;object-fit:cover;border-radius:8px;display:block" alt="">
+      ${fotos.length > 1 ? `
+        <button type="button" onclick="trocarFotoGaleria(-1)" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:18px;line-height:1">‹</button>
+        <button type="button" onclick="trocarFotoGaleria(1)" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:18px;line-height:1">›</button>
+      ` : ''}
+    </div>` : ''}
     ${galeria}
     <div class="row" style="margin-top:12px">
       <div><div class="muted" style="font-size:11px">Tipo</div>${esc(i.tipo || '—')}</div>
@@ -865,6 +893,7 @@ function openImovelDetail(id) {
     <p><b>Descrição:</b><br>${esc(i.descricao || '—').replace(/\n/g, '<br>')}</p>
     <div class="actions" style="margin-top:14px">
       <button class="btn-gold" onclick="editarImovel('${i.id}');fecharModal()">Editar</button>
+      <button class="btn-ghost" onclick="copiarLinkImovel('${i.id}')">🔗 Copiar link pro cliente</button>
       <button class="btn-ghost" onclick="fecharModal()">Fechar</button>
     </div>`;
   document.getElementById('modal-content').innerHTML = html;
